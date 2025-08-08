@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/jmoiron/sqlx/reflectx"
 	_ "github.com/lib/pq"
 )
 
@@ -27,6 +28,7 @@ func New(URL string) (*sqlx.DB, func(), error) {
 	cleanup := func() {
 		_ = db.Close()
 	}
+	db.Mapper = reflectx.NewMapper("json")
 
 	return db, cleanup, nil
 }
