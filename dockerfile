@@ -12,6 +12,7 @@ RUN go mod download
 # Install required tools
 RUN go install github.com/air-verse/air@latest
 RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+RUN go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 
 # Copy the rest of the application
 COPY . .
@@ -31,6 +32,7 @@ RUN apk add --no-cache \
 # Copy the Go binary and tools from builder
 COPY --from=builder /go/bin/air /usr/local/bin/air
 COPY --from=builder /go/bin/goose /usr/local/bin/goose
+COPY --from=builder /go/bin/sqlc /usr/local/bin/sqlc
 COPY --from=builder /app ./
 
 EXPOSE 8000

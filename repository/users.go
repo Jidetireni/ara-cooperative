@@ -59,7 +59,7 @@ func (uq *UserQuerier) Get(ctx context.Context, filter UserQuerierFilter) (*User
 func (uq *UserQuerier) Create(ctx context.Context, user *User) (*User, error) {
 	builder := uq.psql.Insert("users").
 		Columns("email", "hash_password").
-		Values(user.Email, user.HashPassword).
+		Values(user.Email, user.PasswordHash).
 		Suffix("RETURNING *")
 
 	query, args, err := builder.ToSql()

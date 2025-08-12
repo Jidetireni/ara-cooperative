@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/Jidetireni/asynchronous-API/config"
-	"github.com/Jidetireni/asynchronous-API/factory"
+	"github.com/Jidetireni/ara-cooperative.git/config"
+	"github.com/Jidetireni/ara-cooperative.git/factory"
 )
 
 type Server struct {

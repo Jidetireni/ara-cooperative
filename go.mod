@@ -1,4 +1,4 @@
-module github.com/Jidetireni/asynchronous-API
+module github.com/Jidetireni/ara-cooperative.git
 
 go 1.24.2
 

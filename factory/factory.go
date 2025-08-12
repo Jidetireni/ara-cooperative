@@ -1,8 +1,8 @@
 package factory
 
 import (
-	"github.com/Jidetireni/asynchronous-API/config"
-	"github.com/Jidetireni/asynchronous-API/services/postgresql"
+	"github.com/Jidetireni/ara-cooperative.git/config"
+	"github.com/Jidetireni/ara-cooperative.git/services/postgresql"
 	"github.com/go-chi/chi"
 	"github.com/jmoiron/sqlx"
 )
