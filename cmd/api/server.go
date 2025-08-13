@@ -5,29 +5,33 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/Jidetireni/asynchronous-API/config"
-	"github.com/Jidetireni/asynchronous-API/factory"
+	"github.com/Jidetireni/ara-cooperative.git/factory"
+	"github.com/Jidetireni/ara-cooperative.git/internal/config"
 )
 
 type Server struct {
 	Config  *config.Config
-	Factory *factory.Factory
+	Factory factory.Factory
 }
 
-func NewServer() (*Server, func()) {
+func NewServer() (*Server, func(), error) {
 	cfg := config.New()
-	factory, cleanup := factory.New(cfg)
+
+	factory, cleanup, err := factory.New(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	return &Server{
 		Config:  cfg,
-		Factory: factory,
-	}, cleanup
+		Factory: *factory,
+	}, cleanup, nil
 }
 
 func (s *Server) Start() {
 	fmt.Printf(" Server running on http://localhost:%s%s\n", s.Config.Server.Port, "/api/v1")
 
-	if err := http.ListenAndServe(":"+s.Config.Server.Port, s.Factory.Core.Router); err != nil {
+	if err := http.ListenAndServe(":"+s.Config.Server.Port, s.Factory.Router); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }

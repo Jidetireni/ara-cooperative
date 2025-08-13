@@ -1,0 +1,14 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "migrations/queries"
+    schema: "migrations/schema"
+    gen:
+      go:
+        out: "/internal/repository"
+        emit_json_tags: true
+        overrides:
+          - column: "responses.data" 
+            go_type:
+              import: "github.com/Jidetireni/ara-cooperative.git/dto"
+              type: "FBEResponseData"
