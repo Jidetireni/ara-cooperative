@@ -17,7 +17,4 @@ type User struct {
 	PasswordHash     string    `json:"password_hash"`
 	NextOfKinName    string    `json:"next_of_kin_name"`
 	NextOfKinPhone   string    `json:"next_of_kin_phone"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	DeletedAt        time.Time `json:"deleted_at"`
-	CreatedAt        time.Time `json:"created_at"`
 }
