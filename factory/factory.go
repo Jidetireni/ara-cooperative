@@ -1,14 +1,13 @@
 package factory
 
 import (
-	"github.com/Jidetireni/ara-cooperative.git/config"
-	"github.com/Jidetireni/ara-cooperative.git/services/postgresql"
+	"github.com/Jidetireni/ara-cooperative.git/internal/config"
+	"github.com/Jidetireni/ara-cooperative.git/pkg/postgresql"
 	"github.com/go-chi/chi"
-	"github.com/jmoiron/sqlx"
 )
 
 type Factory struct {
-	DB     *sqlx.DB
+	DB     *postgresql.PostgresDB
 	Router *chi.Mux
 }
 

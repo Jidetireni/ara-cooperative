@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/Jidetireni/ara-cooperative.git/config"
 	"github.com/Jidetireni/ara-cooperative.git/factory"
+	"github.com/Jidetireni/ara-cooperative.git/internal/config"
 )
 
 type Server struct {

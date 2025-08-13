@@ -27,6 +27,12 @@ docker/stop:
 	@echo "Stoping docker containers..."
 	docker compose stop
 
+## migration/create: create a new migration file
+migration/create:
+	@echo "Creating migration file for $(name)..."
+	docker exec -it $(API_CONTAINER_NAME) goose -v -s create $(name) sql
+
+
 ## migration/up: run migrations
 migration/up:
 	@echo "Running migrations..."
@@ -41,3 +47,7 @@ migration/down:
 migration/reset:
 	@echo "Resetting migrations..."
 	docker exec -it $(API_CONTAINER_NAME) goose -v reset
+
+sqlc/generate:
+	@echo "Generating SQLC code.."
+	docker exec -it $(API_CONTAINER_NAME) sqlc generate

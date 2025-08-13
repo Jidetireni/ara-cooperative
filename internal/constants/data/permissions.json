@@ -1,0 +1,39 @@
+[
+	{
+		"permission": "member:write",
+		"description": "Ability to create and update member data."
+	},
+	{
+		"permission": "member:read",
+		"description": "Ability to view all member data."
+	},
+	{
+		"permission": "member:read:own",
+		"description": "Ability to view own member data."
+	},
+	{
+		"permission": "member:write:own",
+		"description": "Ability to update own member data."
+	},
+
+	{
+		"permission": "loan:apply",
+		"description": "Ability to submit a loan application."
+	},
+	{
+		"permission": "loan:approve",
+		"description": "Ability to approve or deny a loan application."
+	},
+	{
+		"permission": "ledger:read",
+		"description": "Ability to view all financial ledgers."
+	},
+	{
+		"permission": "ledger:read:own",
+		"description": "Ability to view own financial ledger."
+	},
+	{
+		"permission": "role:assign",
+		"description": "Ability to assign roles to other users."
+	}
+]

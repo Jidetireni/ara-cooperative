@@ -35,6 +35,6 @@ COPY --from=builder /go/bin/goose /usr/local/bin/goose
 COPY --from=builder /go/bin/sqlc /usr/local/bin/sqlc
 COPY --from=builder /app ./
 
-EXPOSE 8000
+EXPOSE 5000
 
 ENTRYPOINT ["air", "--build.cmd", "go build -o tmp/api -buildvcs=false ./cmd/api", "--build.bin", "./tmp/api", "--build.exclude_dir", "logs"]

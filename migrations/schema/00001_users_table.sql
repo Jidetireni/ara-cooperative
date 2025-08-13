@@ -5,8 +5,9 @@ CREATE TABLE users (
     first_name VARCHAR(255) NOT NULL,
     last_name VARCHAR(255) NOT NULL,
     phone VARCHAR(20) NOT NULL UNIQUE,
+    address VARCHAR(255),
     email_confirmed_at TIMESTAMPTZ,
-    password_hash VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255),
     updated_at TIMESTAMPTZ,
     deleted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
