@@ -5,7 +5,7 @@ sql:
     schema: "migrations/schema"
     gen:
       go:
-        out: "/repository"
+        out: "/internal/repository"
         emit_json_tags: true
         overrides:
           - column: "responses.data" 

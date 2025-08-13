@@ -8,6 +8,8 @@ CREATE TABLE users (
     address VARCHAR(255),
     email_confirmed_at TIMESTAMPTZ,
     password_hash VARCHAR(255),
+    next_of_kin_name VARCHAR(255),
+    next_of_kin_phone VARCHAR(20),
     updated_at TIMESTAMPTZ,
     deleted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
