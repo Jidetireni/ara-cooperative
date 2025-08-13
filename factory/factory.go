@@ -2,17 +2,17 @@ package factory
 
 import (
 	"github.com/Jidetireni/ara-cooperative.git/internal/config"
-	"github.com/Jidetireni/ara-cooperative.git/pkg/postgresql"
+	"github.com/Jidetireni/ara-cooperative.git/pkg/database"
 	"github.com/go-chi/chi"
 )
 
 type Factory struct {
-	DB     *postgresql.PostgresDB
+	DB     *database.PostgresDB
 	Router *chi.Mux
 }
 
 func New(cfg *config.Config) (*Factory, func(), error) {
-	db, cleanup, err := postgresql.New(cfg.Database.URL)
+	db, cleanup, err := database.New(cfg.Database.URL)
 	if err != nil {
 		return nil, nil, err
 	}
