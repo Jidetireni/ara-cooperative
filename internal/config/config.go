@@ -13,7 +13,8 @@ type ServerConfig struct {
 }
 
 type DataBaseConfig struct {
-	URL string
+	URL  string
+	Type string
 }
 
 type Config struct {
@@ -28,6 +29,7 @@ func validateEnv() {
 		"PORT",
 		// database
 		"DB_URL",
+		"DB_TYPE",
 	}
 	for _, env := range environmentVariables {
 		if os.Getenv(env) == "" {
@@ -50,7 +52,8 @@ func New() *Config {
 			Port: os.Getenv("PORT"),
 		},
 		Database: DataBaseConfig{
-			URL: os.Getenv("DB_URL"),
+			URL:  os.Getenv("DB_URL"),
+			Type: os.Getenv("DB_TYPE"),
 		},
 	}
 }

@@ -12,7 +12,7 @@ type Factory struct {
 }
 
 func New(cfg *config.Config) (*Factory, func(), error) {
-	db, cleanup, err := database.New(cfg.Database.URL)
+	db, cleanup, err := database.New(cfg.Database.URL, cfg.Database.Type)
 	if err != nil {
 		return nil, nil, err
 	}

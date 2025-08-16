@@ -18,8 +18,8 @@ type PostgresDB struct {
 	SqlBuilder sq.StatementBuilderType
 }
 
-func New(URL string) (*PostgresDB, func(), error) {
-	db, cleanup, err := initDB(URL)
+func New(URL string, dbType string) (*PostgresDB, func(), error) {
+	db, cleanup, err := initDB(URL, dbType)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
@@ -34,8 +34,8 @@ func New(URL string) (*PostgresDB, func(), error) {
 	return pgDB, cleanup, nil
 }
 
-func initDB(URL string) (*sqlx.DB, func(), error) {
-	db, err := sqlx.Open("postgres", URL)
+func initDB(URL string, dbType string) (*sqlx.DB, func(), error) {
+	db, err := sqlx.Open(dbType, URL)
 	if err != nil {
 		return nil, nil, err
 	}

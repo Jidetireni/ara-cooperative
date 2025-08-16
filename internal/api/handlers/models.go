@@ -6,7 +6,17 @@ import (
 	"github.com/google/uuid"
 )
 
-type User struct {
+type CreateMemberInput struct {
+	Email          string `json:"email" validate:"required,email"`
+	FirstName      string `json:"first_name" validate:"required"`
+	LastName       string `json:"last_name" validate:"required"`
+	Phone          string `json:"phone" validate:"required"`
+	Address        string `json:"address" validate:"required"`
+	NextOfKinName  string `json:"next_of_kin_name" validate:"required"`
+	NextOfKinPhone string `json:"next_of_kin_phone" validate:"required"`
+}
+
+type Member struct {
 	ID               uuid.UUID `json:"id"`
 	Email            string    `json:"email"`
 	FirstName        string    `json:"first_name"`
