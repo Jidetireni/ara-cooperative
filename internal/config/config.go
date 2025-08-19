@@ -17,9 +17,17 @@ type DataBaseConfig struct {
 	Type string
 }
 
+type AuthConfig struct {
+	JWTSecret     string
+	TokenExpiry   string
+	RefreshExpiry string
+}
+
 type Config struct {
 	Server   ServerConfig
 	Database DataBaseConfig
+	Auth     AuthConfig
+	IsDev    bool
 }
 
 func validateEnv() {
@@ -30,6 +38,10 @@ func validateEnv() {
 		// database
 		"DB_URL",
 		"DB_TYPE",
+		// auth
+		"JWT_SECRET",
+		"TOKEN_EXPIRY",
+		"REFRESH_EXPIRY",
 	}
 	for _, env := range environmentVariables {
 		if os.Getenv(env) == "" {
@@ -55,5 +67,12 @@ func New() *Config {
 			URL:  os.Getenv("DB_URL"),
 			Type: os.Getenv("DB_TYPE"),
 		},
+		Auth: AuthConfig{
+			JWTSecret:     os.Getenv("JWT_SECRET"),
+			TokenExpiry:   os.Getenv("TOKEN_EXPIRY"),
+			RefreshExpiry: os.Getenv("REFRESH_EXPIRY"),
+		},
+
+		IsDev: os.Getenv("ENV") == "development",
 	}
 }

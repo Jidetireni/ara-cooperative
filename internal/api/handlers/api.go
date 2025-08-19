@@ -15,4 +15,5 @@ func NewHandlers(factory *factory.Factory, config *config.Config) *Handlers {
 		factory: factory,
 		config:  config,
 	}
+
 }

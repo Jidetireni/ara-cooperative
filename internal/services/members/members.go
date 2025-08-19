@@ -2,11 +2,13 @@ package members
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/api/handlers"
 	"github.com/Jidetireni/ara-cooperative.git/internal/config"
+	"github.com/Jidetireni/ara-cooperative.git/internal/dto"
 	"github.com/Jidetireni/ara-cooperative.git/internal/helpers"
 	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative.git/internal/services"
@@ -24,6 +26,7 @@ type MemberRepository interface {
 }
 
 type UserRepository interface {
+	Create(ctx context.Context, user *repository.User, tx *sqlx.Tx) (*repository.User, error)
 	Exists(ctx context.Context, filter repository.UserRepositoryFilter) (bool, error)
 }
 
@@ -43,7 +46,7 @@ func New(db *sqlx.DB, config *config.Config, memberRepo MemberRepository, userRe
 	}
 }
 
-func (m Member) Create(ctx context.Context, input handlers.CreateMemberInput) (*handlers.Member, error) {
+func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.Member, error) {
 	emailExists, err := m.UserRepository.Exists(ctx, repository.UserRepositoryFilter{
 		Email: &input.Email,
 	})
@@ -72,10 +75,59 @@ func (m Member) Create(ctx context.Context, input handlers.CreateMemberInput) (*
 
 	tx, err := m.DB.BeginTxx(ctx, nil)
 	if err != nil {
-		return &handlers.Member{}, err
+		return &dto.Member{}, err
 	}
 	defer tx.Rollback()
 
-	memberSlug := strings.ToLower(helpers.GenerateRandomString(8))
+	user, err := m.UserRepository.Create(ctx, &repository.User{
+		Email: input.Email,
+	}, tx)
+	if err != nil {
+		return &dto.Member{}, err
+	}
 
+	memberSlug := strings.ToLower(helpers.GenerateRandomString(8))
+	memberCode := fmt.Sprintf("ARA%06d", helpers.GetNextMemberNumber())
+
+	member, err := m.MemberRepository.Create(ctx, &repository.Member{
+		UserID:    user.ID,
+		Code:      memberCode,
+		Slug:      memberSlug,
+		FirstName: input.FirstName,
+		LastName:  input.LastName,
+		Phone:     input.Phone,
+		Address: sql.NullString{
+			String: input.Address,
+			Valid:  input.Address != "",
+		},
+		NextOfKinName: sql.NullString{
+			String: input.NextOfKinName,
+			Valid:  input.NextOfKinName != "",
+		},
+		NextOfKinPhone: sql.NullString{
+			String: input.NextOfKinPhone,
+			Valid:  input.NextOfKinPhone != "",
+		},
+	}, tx)
+	if err != nil {
+		return &dto.Member{}, err
+	}
+
+	// TODO: send email
+
+	return m.mapRepositoryToHandler(*member), nil
+
+}
+
+func (m *Member) mapRepositoryToHandler(member repository.Member) *dto.Member {
+	return &dto.Member{
+		ID:             member.ID,
+		FirstName:      member.FirstName,
+		LastName:       member.LastName,
+		Slug:           member.Slug,
+		Code:           member.Code,
+		Address:        member.Address.String,
+		NextOfKinName:  member.NextOfKinName.String,
+		NextOfKinPhone: member.NextOfKinPhone.String,
+	}
 }

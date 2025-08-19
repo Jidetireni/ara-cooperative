@@ -93,10 +93,11 @@ func (mq *MemberRepository) Create(ctx context.Context, member *Member, tx *sqlx
 	}
 
 	var createdMember Member
-
-	if err := mq.db.GetContext(ctx, &createdMember, query, args...); err != nil {
-		return nil, err
+	if tx != nil {
+		err = tx.GetContext(ctx, &createdMember, query, args...)
+		return &createdMember, err
 	}
 
-	return &createdMember, nil
+	err = mq.db.GetContext(ctx, &createdMember, query, args...)
+	return &createdMember, err
 }

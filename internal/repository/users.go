@@ -84,10 +84,11 @@ func (uq *UserRepository) Create(ctx context.Context, user *User, tx *sqlx.Tx) (
 	}
 
 	var createdUser User
-
-	if err := uq.db.GetContext(ctx, &createdUser, query, args...); err != nil {
-		return nil, err
+	if tx != nil {
+		err = tx.GetContext(ctx, &createdUser, query, args...)
+		return &createdUser, err
 	}
 
-	return &createdUser, nil
+	err = uq.db.GetContext(ctx, &createdUser, query, args...)
+	return &createdUser, err
 }
