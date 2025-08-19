@@ -9,7 +9,25 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sqlc-dev/pqtype"
 )
+
+type Member struct {
+	ID             uuid.UUID             `json:"id"`
+	UserID         uuid.UUID             `json:"user_id"`
+	Code           string                `json:"code"`
+	Slug           string                `json:"slug"`
+	FirstName      string                `json:"first_name"`
+	LastName       string                `json:"last_name"`
+	Phone          string                `json:"phone"`
+	Address        sql.NullString        `json:"address"`
+	NextOfKinName  sql.NullString        `json:"next_of_kin_name"`
+	NextOfKinPhone sql.NullString        `json:"next_of_kin_phone"`
+	MembershipData pqtype.NullRawMessage `json:"membership_data"`
+	CreatedAt      time.Time             `json:"created_at"`
+	UpdatedAt      sql.NullTime          `json:"updated_at"`
+	DeletedAt      sql.NullTime          `json:"deleted_at"`
+}
 
 type Role struct {
 	ID          uuid.UUID      `json:"id"`
@@ -21,17 +39,11 @@ type Role struct {
 type User struct {
 	ID               uuid.UUID      `json:"id"`
 	Email            string         `json:"email"`
-	FirstName        string         `json:"first_name"`
-	LastName         string         `json:"last_name"`
-	Phone            string         `json:"phone"`
-	Address          sql.NullString `json:"address"`
-	EmailConfirmedAt sql.NullTime   `json:"email_confirmed_at"`
 	PasswordHash     sql.NullString `json:"password_hash"`
-	NextOfKinName    sql.NullString `json:"next_of_kin_name"`
-	NextOfKinPhone   sql.NullString `json:"next_of_kin_phone"`
+	EmailConfirmedAt sql.NullTime   `json:"email_confirmed_at"`
+	CreatedAt        time.Time      `json:"created_at"`
 	UpdatedAt        sql.NullTime   `json:"updated_at"`
 	DeletedAt        sql.NullTime   `json:"deleted_at"`
-	CreatedAt        time.Time      `json:"created_at"`
 }
 
 type UserRole struct {
