@@ -92,3 +92,24 @@ func (uq *UserRepository) Create(ctx context.Context, user *User, tx *sqlx.Tx) (
 	err = uq.db.GetContext(ctx, &createdUser, query, args...)
 	return &createdUser, err
 }
+
+func (uq *UserRepository) Upsert(ctx context.Context, user *User, tx *sqlx.Tx) (*User, error) {
+	builder := uq.psql.Insert("users").
+		Columns("id", "email", "password_hash").
+		Values(user.ID, user.Email, user.PasswordHash).
+		Suffix("ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, password_hash = EXCLUDED.password_hash RETURNING *")
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	var upsertedUser User
+	if tx != nil {
+		err = tx.GetContext(ctx, &upsertedUser, query, args...)
+		return &upsertedUser, err
+	}
+
+	err = uq.db.GetContext(ctx, &upsertedUser, query, args...)
+	return &upsertedUser, err
+}

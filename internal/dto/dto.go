@@ -36,6 +36,11 @@ type User struct {
 	CreatedAt        time.Time  `json:"created_at"`
 }
 
+type SignUpInput struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8"`
+}
+
 type LoginInput struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required"`

@@ -16,8 +16,9 @@ var userCtxKey = &contextKey{"user"}
 type UserContextValue struct {
 	Writer http.ResponseWriter
 	// User Identifiers
-	ID       uuid.UUID
-	MemberID *uuid.UUID
+	ID    uuid.UUID
+	Email string
+	Roles []string
 
 	SessionID uuid.UUID
 	// Auth
@@ -25,9 +26,6 @@ type UserContextValue struct {
 	AccessToken             string
 	IsAuthenticatedAsMember bool
 	IsAuthenticatedAsAdmin  bool
-
-	// Admin Details
-	Roles []string
 }
 
 func NewContextWithUser(ctx context.Context, user UserContextValue) context.Context {

@@ -8,6 +8,9 @@ import (
 	"github.com/Jidetireni/ara-cooperative.git/internal/services"
 )
 
+// TODO: seperate some errors to be authomatically handled
+// like unique constraint errors, validation errors, etc.
+
 type envelope map[string]any
 
 func (h *Handlers) writeJSON(w http.ResponseWriter, status int, data interface{}, headers http.Header) error {

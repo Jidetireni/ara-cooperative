@@ -112,6 +112,10 @@ func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.M
 	if err != nil {
 		return &dto.Member{}, err
 	}
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return &dto.Member{}, err
+	}
 
 	// TODO: send email
 
