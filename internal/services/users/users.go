@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"time"
 
 	"github.com/Jidetireni/ara-cooperative.git/internal/config"
 	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
@@ -17,8 +18,9 @@ import (
 )
 
 var (
-	_ UserRepository = (*repository.UserRepository)(nil)
-	_ RoleRepository = (*repository.RoleRepository)(nil)
+	_ UserRepository  = (*repository.UserRepository)(nil)
+	_ RoleRepository  = (*repository.RoleRepository)(nil)
+	_ TokenRepository = (*repository.TokenRepository)(nil)
 )
 
 var (
@@ -35,6 +37,10 @@ type RoleRepository interface {
 	AssignRolesToUser(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID, tx *sqlx.Tx) error
 }
 
+type TokenRepository interface {
+	Create(ctx context.Context, token repository.Token, tx *sqlx.Tx) (*repository.Token, error)
+}
+
 type TokenService interface {
 	GenerateTokenPair(params *token.TokenPairParams) (*token.TokenPair, error)
 }
@@ -45,15 +51,17 @@ type User struct {
 	TokenService TokenService
 	UserRepo     UserRepository
 	RoleRepo     RoleRepository
+	TokenRepo    TokenRepository
 }
 
-func New(db *sqlx.DB, cfg *config.Config, tokenService TokenService, userRepo UserRepository, roleRepo RoleRepository) *User {
+func New(db *sqlx.DB, cfg *config.Config, tokenService TokenService, userRepo UserRepository, roleRepo RoleRepository, tokenRepo TokenRepository) *User {
 	return &User{
 		DB:           db,
 		Config:       cfg,
 		TokenService: tokenService,
 		UserRepo:     userRepo,
 		RoleRepo:     roleRepo,
+		TokenRepo:    tokenRepo,
 	}
 }
 
@@ -65,6 +73,13 @@ func (u *User) SignUp(ctx context.Context, w http.ResponseWriter, input *dto.Sig
 		return nil, &svc.ApiError{
 			Status:  http.StatusBadRequest,
 			Message: "user does not exist",
+		}
+	}
+
+	if user.EmailConfirmedAt.Valid {
+		return nil, &svc.ApiError{
+			Status:  http.StatusBadRequest,
+			Message: "user has already been registered, contact admin",
 		}
 	}
 
@@ -85,6 +100,10 @@ func (u *User) SignUp(ctx context.Context, w http.ResponseWriter, input *dto.Sig
 		PasswordHash: sql.NullString{
 			String: string(hashedPassword),
 			Valid:  true,
+		},
+		EmailConfirmedAt: sql.NullTime{
+			Time:  time.Now(),
+			Valid: true,
 		},
 	}, tx)
 	if err != nil {
@@ -123,6 +142,17 @@ func (u *User) SignUp(ctx context.Context, w http.ResponseWriter, input *dto.Sig
 	}
 
 	// TODO save refresh token to database for later useS
+	expiresAt := time.Now().Add(token.RefreshTokenExpirationTime)
+	_, err = u.TokenRepo.Create(ctx, repository.Token{
+		UserID:    upsertUser.ID,
+		Token:     tokenPairs.RefreshToken,
+		TokenType: "refresh",
+		IsValid:   true,
+		ExpiresAt: expiresAt,
+	}, tx)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := u.SetJWTCookie(w, tokenPairs.AccessToken, tokenPairs.RefreshToken, token.JWTTypeMember); err != nil {
 		return nil, err

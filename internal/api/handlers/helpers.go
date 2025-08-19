@@ -41,8 +41,12 @@ func (h *Handlers) errorResponse(w http.ResponseWriter, r *http.Request, message
 		env["error"] = apiErr.Message
 	}
 
-	if err := h.writeJSON(w, status, env, nil); err != nil {
-		h.logError(r, err)
-		w.WriteHeader(http.StatusInternalServerError)
-	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": env["error"],
+		"status":  status,
+	})
+
+	h.logError(r, fmt.Errorf("%v", message))
 }

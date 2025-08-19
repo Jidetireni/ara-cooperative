@@ -15,6 +15,7 @@ type Repositories struct {
 	Member *repository.MemberRepository
 	User   *repository.UserRepository
 	Role   *repository.RoleRepository
+	Token  *repository.TokenRepository
 }
 
 type Services struct {
@@ -41,6 +42,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 	userRepo := repository.NewUserRepository(db.DB)
 	memberRepo := repository.NewMemberRepository(db.DB)
 	roleRepo := repository.NewRoleRepository(db.DB)
+	tokenRepo := repository.NewTokenRepository(db.DB)
 
 	membersService := members.New(
 		db.DB,
@@ -55,6 +57,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		jwtToken,
 		userRepo,
 		roleRepo,
+		tokenRepo,
 	)
 
 	return &Factory{
@@ -69,6 +72,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 				Member: memberRepo,
 				User:   userRepo,
 				Role:   roleRepo,
+				Token:  tokenRepo,
 			},
 		}, func() {
 			cleanup()

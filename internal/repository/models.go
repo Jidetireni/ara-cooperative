@@ -36,6 +36,18 @@ type Role struct {
 	CreatedAt   time.Time      `json:"created_at"`
 }
 
+type Token struct {
+	ID        uuid.UUID    `json:"id"`
+	UserID    uuid.UUID    `json:"user_id"`
+	Token     string       `json:"token"`
+	IsValid   bool         `json:"is_valid"`
+	TokenType string       `json:"token_type"`
+	ExpiresAt time.Time    `json:"expires_at"`
+	UpdatedAt sql.NullTime `json:"updated_at"`
+	DeletedAt sql.NullTime `json:"deleted_at"`
+	CreatedAt time.Time    `json:"created_at"`
+}
+
 type User struct {
 	ID               uuid.UUID      `json:"id"`
 	Email            string         `json:"email"`
