@@ -116,8 +116,8 @@ func (tr *TokenRepository) Update(ctx context.Context, token *Token, tx *sqlx.Tx
 func (tr *TokenRepository) Create(ctx context.Context, token *Token, tx *sqlx.Tx) (*Token, error) {
 	// Insert new refresh token.
 	builder := tr.psql.Insert("tokens").
-		Columns("id", "user_id", "token", "token_type", "is_valid", "expires_at", "created_at", "updated_at").
-		Values(token.ID, token.UserID, token.Token, token.TokenType, token.IsValid, token.ExpiresAt,
+		Columns("user_id", "token", "token_type", "is_valid", "expires_at", "created_at", "updated_at").
+		Values(token.UserID, token.Token, token.TokenType, token.IsValid, token.ExpiresAt,
 			time.Now(), time.Now()).
 		Suffix("ON CONFLICT (user_id, token_type) DO UPDATE SET token = EXCLUDED.token, is_valid = EXCLUDED.is_valid, expires_at = EXCLUDED.expires_at, updated_at = EXCLUDED.updated_at, deleted_at = NULL RETURNING *")
 

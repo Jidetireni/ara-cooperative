@@ -219,7 +219,10 @@ func (u *User) Login(ctx context.Context, w http.ResponseWriter, input *dto.Logi
 		return nil, err
 	}
 
-	u.TokenRepo.Update(ctx, &repository.Token{}, tx)
+	u.TokenRepo.Update(ctx, &repository.Token{
+		TokenType: token.RefreshTokenName,
+		IsValid:   false,
+	}, tx)
 	expiresAt := time.Now().Add(token.RefreshTokenExpirationTime)
 	_, err = u.TokenRepo.Create(ctx, &repository.Token{
 		UserID:    user.ID,

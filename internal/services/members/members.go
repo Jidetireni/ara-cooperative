@@ -92,6 +92,10 @@ func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.M
 
 	user, err := m.UserRepository.Create(ctx, &repository.User{
 		Email: input.Email,
+		PasswordHash: sql.NullString{
+			String: "",
+			Valid:  false,
+		},
 	}, tx)
 	if err != nil {
 		return &dto.Member{}, err
