@@ -36,7 +36,7 @@ type TokenRepositoryFilter struct {
 
 // buildQuery builds a squirrel query based on the provided filter and query type.
 // This generic function encapsulates all common filtering and query building logic for SELECT and COUNT queries.
-func (tr *TokenRepository) buildQuery(filter TokenRepositoryFilter, queryType QueryType) (sq.SelectBuilder, error) {
+func (tr *TokenRepository) buildQuery(filter *TokenRepositoryFilter, queryType QueryType) (sq.SelectBuilder, error) {
 	var builder sq.SelectBuilder
 	switch queryType {
 	case QueryTypeSelect:
@@ -113,7 +113,7 @@ func (tr *TokenRepository) Update(ctx context.Context, token *Token, tx *sqlx.Tx
 }
 
 // Create invalidates existing refresh tokens for a user and stores a new one.
-func (tr *TokenRepository) Create(ctx context.Context, token Token, tx *sqlx.Tx) (*Token, error) {
+func (tr *TokenRepository) Create(ctx context.Context, token *Token, tx *sqlx.Tx) (*Token, error) {
 	// Insert new refresh token.
 	builder := tr.psql.Insert("tokens").
 		Columns("id", "user_id", "token", "token_type", "is_valid", "expires_at", "created_at", "updated_at").
@@ -137,7 +137,7 @@ func (tr *TokenRepository) Create(ctx context.Context, token Token, tx *sqlx.Tx)
 }
 
 // ValidateRefreshToken checks if a token is valid, not expired, and not deleted.
-func (tr *TokenRepository) ValidateRefreshToken(ctx context.Context, filter TokenRepositoryFilter) (bool, error) {
+func (tr *TokenRepository) ValidateRefreshToken(ctx context.Context, filter *TokenRepositoryFilter) (bool, error) {
 	// Use buildQuery with QueryTypeCount.
 	builder, err := tr.buildQuery(filter, QueryTypeCount)
 	if err != nil {
@@ -157,7 +157,7 @@ func (tr *TokenRepository) ValidateRefreshToken(ctx context.Context, filter Toke
 }
 
 // GetTokenByID fetches a single token by its ID.
-func (tr *TokenRepository) GetTokenByID(ctx context.Context, filter TokenRepositoryFilter) (*Token, error) {
+func (tr *TokenRepository) Get(ctx context.Context, filter *TokenRepositoryFilter) (*Token, error) {
 	// Use buildQuery with QueryTypeSelect.
 	builder, err := tr.buildQuery(filter, QueryTypeSelect)
 	if err != nil {

@@ -97,7 +97,7 @@ func (uq *UserRepository) Upsert(ctx context.Context, user *User, tx *sqlx.Tx) (
 	builder := uq.psql.Insert("users").
 		Columns("id", "email", "password_hash", "email_confirmed_at").
 		Values(user.ID, user.Email, user.PasswordHash, user.EmailConfirmedAt).
-		Suffix("ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, password_hash = EXCLUDED.password_hash, email_confirmed_at = EXCLUDED.email_confirmed_at RETURNING *")
+		Suffix("ON CONFLICT (email) WHERE deleted_at IS NULL DO UPDATE SET password_hash = EXCLUDED.password_hash, email_confirmed_at = EXCLUDED.email_confirmed_at WHERE users.deleted_at IS NULL RETURNING *")
 
 	query, args, err := builder.ToSql()
 	if err != nil {

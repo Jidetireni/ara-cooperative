@@ -3,17 +3,18 @@ package users
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/Jidetireni/ara-cooperative.git/internal/config"
-	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
 	"github.com/Jidetireni/ara-cooperative.git/internal/dto"
 	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative.git/internal/services"
 	"github.com/Jidetireni/ara-cooperative.git/pkg/token"
-	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -33,12 +34,13 @@ type UserRepository interface {
 }
 
 type RoleRepository interface {
-	GetRoleByPermission(ctx context.Context, permission string) (*repository.Role, error)
-	AssignRolesToUser(ctx context.Context, userID uuid.UUID, roleIDs []uuid.UUID, tx *sqlx.Tx) error
+	List(ctx context.Context, filter *repository.RoleRepositoryFilter) ([]repository.Role, error)
 }
 
 type TokenRepository interface {
-	Create(ctx context.Context, token repository.Token, tx *sqlx.Tx) (*repository.Token, error)
+	Create(ctx context.Context, token *repository.Token, tx *sqlx.Tx) (*repository.Token, error)
+	Update(ctx context.Context, token *repository.Token, tx *sqlx.Tx) error
+	Get(ctx context.Context, filter *repository.TokenRepositoryFilter) (*repository.Token, error)
 }
 
 type TokenService interface {
@@ -65,38 +67,39 @@ func New(db *sqlx.DB, cfg *config.Config, tokenService TokenService, userRepo Us
 	}
 }
 
-func (u *User) SignUp(ctx context.Context, w http.ResponseWriter, input *dto.SignUpInput) (*dto.AuthResponse, error) {
+func (u *User) SetPassword(ctx context.Context, w http.ResponseWriter, input *dto.SetPasswordInput) (*dto.AuthResponse, error) {
+	fmt.Printf("Setting password for email: %s\n", input.Email)
 	user, err := u.UserRepo.Get(ctx, repository.UserRepositoryFilter{
 		Email: &input.Email,
 	})
 	if err != nil {
-		return nil, &svc.ApiError{
-			Status:  http.StatusBadRequest,
-			Message: "user does not exist",
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, &svc.ApiError{
+				Status:  http.StatusBadRequest,
+				Message: "Invalid email",
+			}
 		}
+		return nil, err
 	}
 
-	if user.EmailConfirmedAt.Valid {
-		return nil, &svc.ApiError{
-			Status:  http.StatusBadRequest,
-			Message: "user has already been registered, contact admin",
-		}
-	}
-
+	// TODO validate the token sent through the url,
+	// this is to ensure that only users with valid tokens can set their passwords.
+	// then invalidate the token after use.
 	tx, err := u.DB.BeginTxx(ctx, nil)
 	if err != nil {
 		return &dto.AuthResponse{}, err
 	}
 	defer tx.Rollback()
 
+	fmt.Println("Hashing password")
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
 
-	upsertUser, err := u.UserRepo.Upsert(ctx, &repository.User{
+	userToUpsert := &repository.User{
 		ID:    user.ID,
-		Email: user.Email,
+		Email: input.Email,
 		PasswordHash: sql.NullString{
 			String: string(hashedPassword),
 			Valid:  true,
@@ -105,36 +108,29 @@ func (u *User) SignUp(ctx context.Context, w http.ResponseWriter, input *dto.Sig
 			Time:  time.Now(),
 			Valid: true,
 		},
-	}, tx)
+	}
+
+	fmt.Println("Upserting user with new password")
+	upsertUser, err := u.UserRepo.Upsert(ctx, userToUpsert, tx)
 	if err != nil {
 		return nil, err
 	}
 
-	defaultPermissions := []string{
-		string(constants.MemberReadOwnPermission),
-		string(constants.MemberWriteOwnPermission),
-		string(constants.LedgerReadOwnPermission),
-		string(constants.LoanApplyPermission),
-	}
-
-	roleIDs := make([]uuid.UUID, 0, len(defaultPermissions))
-	for _, permission := range defaultPermissions {
-		role, err := u.RoleRepo.GetRoleByPermission(ctx, permission)
-		if err != nil {
-			return nil, err
-		}
-		roleIDs = append(roleIDs, role.ID)
-	}
-
-	err = u.RoleRepo.AssignRolesToUser(ctx, upsertUser.ID, roleIDs, tx)
+	roles, err := u.RoleRepo.List(ctx, &repository.RoleRepositoryFilter{
+		UserID: &upsertUser.ID,
+	})
 	if err != nil {
 		return nil, err
 	}
+
+	permissions := lo.Map(roles, func(role repository.Role, _ int) string {
+		return role.Permission
+	})
 
 	tokenPairs, err := u.TokenService.GenerateTokenPair(&token.TokenPairParams{
 		ID:      upsertUser.ID,
 		Email:   upsertUser.Email,
-		Roles:   defaultPermissions,
+		Roles:   permissions,
 		JwtType: token.JWTTypeMember,
 	})
 	if err != nil {
@@ -143,10 +139,11 @@ func (u *User) SignUp(ctx context.Context, w http.ResponseWriter, input *dto.Sig
 
 	// TODO save refresh token to database for later useS
 	expiresAt := time.Now().Add(token.RefreshTokenExpirationTime)
-	_, err = u.TokenRepo.Create(ctx, repository.Token{
+	fmt.Println("Creating refresh token in database")
+	_, err = u.TokenRepo.Create(ctx, &repository.Token{
 		UserID:    upsertUser.ID,
 		Token:     tokenPairs.RefreshToken,
-		TokenType: "refresh",
+		TokenType: token.RefreshTokenName,
 		IsValid:   true,
 		ExpiresAt: expiresAt,
 	}, tx)
@@ -166,7 +163,88 @@ func (u *User) SignUp(ctx context.Context, w http.ResponseWriter, input *dto.Sig
 		User: &dto.AuthUser{
 			ID:    upsertUser.ID,
 			Email: upsertUser.Email,
-			Roles: defaultPermissions,
+		},
+		AccessToken:  "",
+		RefreshToken: "",
+	}, nil
+}
+
+// Login handles user authentication and token generation.
+func (u *User) Login(ctx context.Context, w http.ResponseWriter, input *dto.LoginInput) (*dto.AuthResponse, error) {
+	user, err := u.UserRepo.Get(ctx, repository.UserRepositoryFilter{
+		Email: &input.Email,
+	})
+	if err != nil {
+		// Use a generic error message to prevent leaking information about whether a user exists.
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, &svc.ApiError{
+				Status:  http.StatusUnauthorized,
+				Message: "invalid email or password",
+			}
+		}
+		return nil, err
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash.String), []byte(input.Password)); err != nil {
+		return nil, &svc.ApiError{
+			Status:  http.StatusUnauthorized,
+			Message: "invalid email or password",
+		}
+	}
+
+	roles, err := u.RoleRepo.List(ctx, &repository.RoleRepositoryFilter{
+		UserID: &user.ID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	userPermissions := lo.Map(roles, func(role repository.Role, _ int) string {
+		return role.Permission
+	})
+
+	tx, err := u.DB.BeginTxx(ctx, nil)
+	if err != nil {
+		return &dto.AuthResponse{}, err
+	}
+	defer tx.Rollback()
+
+	tokenPairs, err := u.TokenService.GenerateTokenPair(&token.TokenPairParams{
+		ID:      user.ID,
+		Email:   user.Email,
+		Roles:   userPermissions,
+		JwtType: token.JWTTypeMember,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	u.TokenRepo.Update(ctx, &repository.Token{}, tx)
+	expiresAt := time.Now().Add(token.RefreshTokenExpirationTime)
+	_, err = u.TokenRepo.Create(ctx, &repository.Token{
+		UserID:    user.ID,
+		Token:     tokenPairs.RefreshToken,
+		TokenType: token.RefreshTokenName,
+		IsValid:   true,
+		ExpiresAt: expiresAt,
+	}, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := u.SetJWTCookie(w, tokenPairs.AccessToken, tokenPairs.RefreshToken, token.JWTTypeMember); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	// 8. Return the authentication response.
+	return &dto.AuthResponse{
+		User: &dto.AuthUser{
+			ID:    user.ID,
+			Email: user.Email,
 		},
 		AccessToken:  "",
 		RefreshToken: "",

@@ -3,7 +3,7 @@ CREATE TABLE
   tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    token VARCHAR(255) NOT NULL UNIQUE,
+    token VARCHAR(512) NOT NULL UNIQUE,
     is_valid BOOLEAN NOT NULL,
     token_type VARCHAR(255) NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,

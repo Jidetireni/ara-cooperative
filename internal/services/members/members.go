@@ -8,16 +8,20 @@ import (
 	"strings"
 
 	"github.com/Jidetireni/ara-cooperative.git/internal/config"
+	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
 	"github.com/Jidetireni/ara-cooperative.git/internal/dto"
 	"github.com/Jidetireni/ara-cooperative.git/internal/helpers"
 	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative.git/internal/services"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 var (
 	_ MemberRepository = (*repository.MemberRepository)(nil)
 	_ UserRepository   = (*repository.UserRepository)(nil)
+	_ RoleRepository   = (*repository.RoleRepository)(nil)
 )
 
 type MemberRepository interface {
@@ -30,19 +34,26 @@ type UserRepository interface {
 	Exists(ctx context.Context, filter repository.UserRepositoryFilter) (bool, error)
 }
 
+type RoleRepository interface {
+	List(ctx context.Context, filter *repository.RoleRepositoryFilter) ([]repository.Role, error)
+	AssignToUser(ctx context.Context, userID *uuid.UUID, roleIDs []uuid.UUID, tx *sqlx.Tx) error
+}
+
 type Member struct {
 	DB               *sqlx.DB
 	Config           *config.Config
 	MemberRepository MemberRepository
 	UserRepository   UserRepository
+	RoleRepository   RoleRepository
 }
 
-func New(db *sqlx.DB, config *config.Config, memberRepo MemberRepository, userRepo UserRepository) *Member {
+func New(db *sqlx.DB, config *config.Config, memberRepo MemberRepository, userRepo UserRepository, roleRepo RoleRepository) *Member {
 	return &Member{
 		DB:               db,
 		Config:           config,
 		MemberRepository: memberRepo,
 		UserRepository:   userRepo,
+		RoleRepository:   roleRepo,
 	}
 }
 
@@ -112,12 +123,37 @@ func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.M
 	if err != nil {
 		return &dto.Member{}, err
 	}
+
+	defaultPermissions := []string{
+		string(constants.MemberReadOwnPermission),
+		string(constants.MemberWriteOwnPermission),
+		string(constants.LedgerReadOwnPermission),
+		string(constants.LoanApplyPermission),
+	}
+
+	roles, err := m.RoleRepository.List(ctx, &repository.RoleRepositoryFilter{
+		Permission: defaultPermissions,
+	})
+	if err != nil {
+		return &dto.Member{}, err
+	}
+
+	rolesIDs := lo.Map(roles, func(role repository.Role, _ int) uuid.UUID {
+		return role.ID
+	})
+
+	err = m.RoleRepository.AssignToUser(ctx, &user.ID, rolesIDs, tx)
+	if err != nil {
+		return &dto.Member{}, err
+	}
+
 	// Commit the transaction
 	if err := tx.Commit(); err != nil {
 		return &dto.Member{}, err
 	}
 
-	// TODO: send email
+	// TODO: send email with a stort live url to set password and sign up
+	// e.g http://localhost:5000/api/v1/set-password?token=some-token
 
 	return m.mapRepositoryToHandler(*member), nil
 

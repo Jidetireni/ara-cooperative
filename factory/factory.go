@@ -49,6 +49,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		cfg,
 		memberRepo,
 		userRepo,
+		roleRepo,
 	)
 
 	usersService := users.New(

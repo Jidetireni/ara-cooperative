@@ -11,6 +11,12 @@ func (s *Server) router() {
 
 		r.Get("/healthz", s.Handlers.HealthCheckHandler)
 
-		r.Post("/signup", s.Handlers.SignUp)
+		r.Post("/set-password", s.Handlers.SetPassword)
+		r.Post("/login", s.Handlers.Login)
+
+		r.Route("/members", func(r chi.Router) {
+			r.Post("/", s.Handlers.CreateMember)
+
+		})
 	})
 }

@@ -19,5 +19,4 @@ func (h *Handlers) CreateMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeJSON(w, http.StatusCreated, createdMember, http.Header{})
-
 }
