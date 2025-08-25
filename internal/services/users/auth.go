@@ -1,11 +1,63 @@
 package users
 
 import (
+	"context"
 	"net/http"
+	"slices"
 	"time"
 
+	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
+	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
 	"github.com/Jidetireni/ara-cooperative.git/pkg/token"
+	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
+
+func (u *User) generateTokenAndSave(ctx context.Context, w http.ResponseWriter, user *repository.User, tx *sqlx.Tx) (*token.TokenPair, error) {
+	roles, err := u.RoleRepo.List(ctx, &repository.RoleRepositoryFilter{
+		UserID: &user.ID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	userPermissions := lo.Map(roles, func(role repository.Role, _ int) string {
+		return role.Permission
+	})
+
+	jwtType := token.JWTTypeMember
+	if slices.Contains(userPermissions, string(constants.RoleAssignPermission)) {
+		jwtType = token.JWTTypeAdmin
+	}
+
+	tokenPairs, err := u.TokenService.GenerateTokenPair(&token.TokenPairParams{
+		ID:      user.ID,
+		Email:   user.Email,
+		Roles:   userPermissions,
+		JwtType: token.JWTType(jwtType),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	expiresAt := time.Now().Add(token.RefreshTokenExpirationTime)
+	_, err = u.TokenRepo.Create(ctx, &repository.Token{
+		UserID:    user.ID,
+		Token:     tokenPairs.RefreshToken,
+		TokenType: token.RefreshTokenName,
+		IsValid:   true,
+		ExpiresAt: expiresAt,
+	}, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := u.SetJWTCookie(w, tokenPairs.AccessToken, tokenPairs.RefreshToken, token.JWTTypeMember); err != nil {
+		return nil, err
+	}
+
+	return tokenPairs, nil
+}
 
 func (u *User) SetJWTCookie(w http.ResponseWriter, accessToken, refreshToken string, jwtType token.JWTType) error {
 	isDevelopmentMode := u.Config.IsDev

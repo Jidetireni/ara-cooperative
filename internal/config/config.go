@@ -8,8 +8,9 @@ import (
 )
 
 type ServerConfig struct {
-	Env  string
-	Port string
+	Env   string
+	Port  string
+	FEURL string
 }
 
 type DataBaseConfig struct {
@@ -18,13 +19,18 @@ type DataBaseConfig struct {
 }
 
 type AuthConfig struct {
-	JWTSecret     string
+	JWTSecret string
+}
+
+type EmailConfig struct {
+	Password string
 }
 
 type Config struct {
 	Server   ServerConfig
 	Database DataBaseConfig
 	Auth     AuthConfig
+	Email    EmailConfig
 	IsDev    bool
 }
 
@@ -33,11 +39,14 @@ func validateEnv() {
 		// server
 		"ENV",
 		"PORT",
+		"FE_URL",
 		// database
 		"DB_URL",
 		"DB_TYPE",
 		// auth
 		"JWT_SECRET",
+		// email
+		"EMAIL_PASSWORD",
 	}
 	for _, env := range environmentVariables {
 		if os.Getenv(env) == "" {
@@ -56,16 +65,19 @@ func New() *Config {
 
 	return &Config{
 		Server: ServerConfig{
-			Env:  os.Getenv("ENV"),
-			Port: os.Getenv("PORT"),
+			Env:   os.Getenv("ENV"),
+			Port:  os.Getenv("PORT"),
+			FEURL: os.Getenv("FE_URL"),
 		},
 		Database: DataBaseConfig{
 			URL:  os.Getenv("DB_URL"),
 			Type: os.Getenv("DB_TYPE"),
 		},
 		Auth: AuthConfig{
-			JWTSecret:     os.Getenv("JWT_SECRET"),
-
+			JWTSecret: os.Getenv("JWT_SECRET"),
+		},
+		Email: EmailConfig{
+			Password: os.Getenv("EMAIL_PASSWORD"),
 		},
 
 		IsDev: os.Getenv("ENV") == "development",

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/Jidetireni/ara-cooperative.git/pkg/token"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -17,6 +18,10 @@ func (s *Server) router() {
 		r.Route("/members", func(r chi.Router) {
 			r.Post("/", s.Handlers.CreateMember)
 
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
+				r.Get("/{slug}", s.Handlers.MemberBySlug)
+			})
 		})
 	})
 }

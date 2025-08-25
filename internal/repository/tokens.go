@@ -137,7 +137,7 @@ func (tr *TokenRepository) Create(ctx context.Context, token *Token, tx *sqlx.Tx
 }
 
 // ValidateRefreshToken checks if a token is valid, not expired, and not deleted.
-func (tr *TokenRepository) ValidateRefreshToken(ctx context.Context, filter *TokenRepositoryFilter) (bool, error) {
+func (tr *TokenRepository) Validate(ctx context.Context, filter *TokenRepositoryFilter) (bool, error) {
 	// Use buildQuery with QueryTypeCount.
 	builder, err := tr.buildQuery(filter, QueryTypeCount)
 	if err != nil {

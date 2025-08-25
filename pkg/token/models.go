@@ -15,6 +15,7 @@ const (
 
 	RefreshTokenName = "refresh_token"
 	AccessTokenName  = "access_token"
+	SetPasswordToken = "set_password_token"
 
 	JWTTypeMember = "member"
 	JWTTypeAdmin  = "admin"

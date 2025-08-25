@@ -20,9 +20,6 @@ func (h *Handlers) writeJSON(w http.ResponseWriter, status int, data interface{}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(map[string]any{
 		"data":   data,
 		"status": status,
@@ -57,4 +54,11 @@ func (h *Handlers) errorResponse(w http.ResponseWriter, r *http.Request, message
 	}
 
 	h.logError(r, fmt.Errorf("%v", message))
+}
+
+func (h *Handlers) forbiddenError(w http.ResponseWriter, r *http.Request) {
+	h.errorResponse(w, r, &services.ApiError{
+		Status:  http.StatusForbidden,
+		Message: "You don't have permission to access this resource",
+	})
 }

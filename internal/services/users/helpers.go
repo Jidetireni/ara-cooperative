@@ -3,7 +3,9 @@ package users
 import (
 	"context"
 	"net/http"
+	"slices"
 
+	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
 	"github.com/google/uuid"
 )
 
@@ -36,4 +38,21 @@ func NewContextWithUser(ctx context.Context, user UserContextValue) context.Cont
 func FromContext(ctx context.Context) UserContextValue {
 	raw, _ := ctx.Value(userCtxKey).(UserContextValue)
 	return raw
+}
+
+func HasAdminPermissions(ctx context.Context, permissions []constants.UserPermmisions) bool {
+	user := FromContext(ctx)
+	if !user.IsAuthenticatedAsAdmin {
+		return false
+	}
+
+	userPermissions := user.Roles
+	for _, permission := range permissions {
+		if !slices.Contains(userPermissions, string(permission)) {
+			return false
+		}
+
+	}
+
+	return true
 }

@@ -2,11 +2,13 @@ package factory
 
 import (
 	"github.com/Jidetireni/ara-cooperative.git/internal/config"
+	"github.com/Jidetireni/ara-cooperative.git/internal/middleware"
 	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
 	"github.com/Jidetireni/ara-cooperative.git/internal/services/members"
 	"github.com/Jidetireni/ara-cooperative.git/internal/services/users"
 
 	"github.com/Jidetireni/ara-cooperative.git/pkg/database"
+	"github.com/Jidetireni/ara-cooperative.git/pkg/email"
 	"github.com/Jidetireni/ara-cooperative.git/pkg/token"
 	"github.com/go-chi/chi"
 )
@@ -26,9 +28,11 @@ type Services struct {
 type Factory struct {
 	DB           *database.PostgresDB
 	JWTToken     *token.Jwt
+	Email        *email.Email
 	Router       *chi.Mux
 	Services     *Services
 	Repositories *Repositories
+	Middleware   *middleware.Middleware
 }
 
 func New(cfg *config.Config) (*Factory, func(), error) {
@@ -38,6 +42,11 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 	}
 
 	jwtToken := token.NewJwt(cfg.Auth.JWTSecret)
+
+	email, err := email.New(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	userRepo := repository.NewUserRepository(db.DB)
 	memberRepo := repository.NewMemberRepository(db.DB)
@@ -50,6 +59,8 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		memberRepo,
 		userRepo,
 		roleRepo,
+		tokenRepo,
+		email,
 	)
 
 	usersService := users.New(
@@ -61,10 +72,13 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		tokenRepo,
 	)
 
+	middleware := middleware.New(jwtToken)
+
 	return &Factory{
 			DB:       db,
 			JWTToken: jwtToken,
 			Router:   chi.NewRouter(),
+			Email:    email,
 			Services: &Services{
 				Member: membersService,
 				User:   usersService,
@@ -75,6 +89,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 				Role:   roleRepo,
 				Token:  tokenRepo,
 			},
+			Middleware: middleware,
 		}, func() {
 			cleanup()
 		}, nil

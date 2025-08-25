@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -41,10 +40,12 @@ type TokenRepository interface {
 	Create(ctx context.Context, token *repository.Token, tx *sqlx.Tx) (*repository.Token, error)
 	Update(ctx context.Context, token *repository.Token, tx *sqlx.Tx) error
 	Get(ctx context.Context, filter *repository.TokenRepositoryFilter) (*repository.Token, error)
+	Validate(ctx context.Context, filter *repository.TokenRepositoryFilter) (bool, error)
 }
 
 type TokenService interface {
 	GenerateTokenPair(params *token.TokenPairParams) (*token.TokenPair, error)
+	ValidateToken(tokenString string) (*token.UserClaims, error)
 }
 
 type User struct {
@@ -68,7 +69,6 @@ func New(db *sqlx.DB, cfg *config.Config, tokenService TokenService, userRepo Us
 }
 
 func (u *User) SetPassword(ctx context.Context, w http.ResponseWriter, input *dto.SetPasswordInput) (*dto.AuthResponse, error) {
-	fmt.Printf("Setting password for email: %s\n", input.Email)
 	user, err := u.UserRepo.Get(ctx, repository.UserRepositoryFilter{
 		Email: &input.Email,
 	})
@@ -85,13 +85,30 @@ func (u *User) SetPassword(ctx context.Context, w http.ResponseWriter, input *dt
 	// TODO validate the token sent through the url,
 	// this is to ensure that only users with valid tokens can set their passwords.
 	// then invalidate the token after use.
+	isValid, err := u.TokenRepo.Validate(ctx, &repository.TokenRepositoryFilter{
+		UserID:    &user.ID,
+		Token:     &input.Token,
+		TokenType: lo.ToPtr(string(token.SetPasswordToken)),
+		IsValid:   lo.ToPtr(true),
+		IsExpired: lo.ToPtr(false),
+		IsDeleted: lo.ToPtr(false),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !isValid {
+		return nil, &svc.ApiError{
+			Status:  http.StatusBadRequest,
+			Message: "Invalid or expired token",
+		}
+	}
+
 	tx, err := u.DB.BeginTxx(ctx, nil)
 	if err != nil {
 		return &dto.AuthResponse{}, err
 	}
 	defer tx.Rollback()
 
-	fmt.Println("Hashing password")
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -110,48 +127,13 @@ func (u *User) SetPassword(ctx context.Context, w http.ResponseWriter, input *dt
 		},
 	}
 
-	fmt.Println("Upserting user with new password")
 	upsertUser, err := u.UserRepo.Upsert(ctx, userToUpsert, tx)
 	if err != nil {
 		return nil, err
 	}
 
-	roles, err := u.RoleRepo.List(ctx, &repository.RoleRepositoryFilter{
-		UserID: &upsertUser.ID,
-	})
+	_, err = u.generateTokenAndSave(ctx, w, upsertUser, tx)
 	if err != nil {
-		return nil, err
-	}
-
-	permissions := lo.Map(roles, func(role repository.Role, _ int) string {
-		return role.Permission
-	})
-
-	tokenPairs, err := u.TokenService.GenerateTokenPair(&token.TokenPairParams{
-		ID:      upsertUser.ID,
-		Email:   upsertUser.Email,
-		Roles:   permissions,
-		JwtType: token.JWTTypeMember,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO save refresh token to database for later useS
-	expiresAt := time.Now().Add(token.RefreshTokenExpirationTime)
-	fmt.Println("Creating refresh token in database")
-	_, err = u.TokenRepo.Create(ctx, &repository.Token{
-		UserID:    upsertUser.ID,
-		Token:     tokenPairs.RefreshToken,
-		TokenType: token.RefreshTokenName,
-		IsValid:   true,
-		ExpiresAt: expiresAt,
-	}, tx)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := u.SetJWTCookie(w, tokenPairs.AccessToken, tokenPairs.RefreshToken, token.JWTTypeMember); err != nil {
 		return nil, err
 	}
 
@@ -192,50 +174,24 @@ func (u *User) Login(ctx context.Context, w http.ResponseWriter, input *dto.Logi
 		}
 	}
 
-	roles, err := u.RoleRepo.List(ctx, &repository.RoleRepositoryFilter{
-		UserID: &user.ID,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	userPermissions := lo.Map(roles, func(role repository.Role, _ int) string {
-		return role.Permission
-	})
-
 	tx, err := u.DB.BeginTxx(ctx, nil)
 	if err != nil {
-		return &dto.AuthResponse{}, err
+		return nil, err
 	}
 	defer tx.Rollback()
 
-	tokenPairs, err := u.TokenService.GenerateTokenPair(&token.TokenPairParams{
-		ID:      user.ID,
-		Email:   user.Email,
-		Roles:   userPermissions,
-		JwtType: token.JWTTypeMember,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	u.TokenRepo.Update(ctx, &repository.Token{
+	// Invalidate existing refresh tokens for the user.
+	err = u.TokenRepo.Update(ctx, &repository.Token{
+		UserID:    user.ID,
 		TokenType: token.RefreshTokenName,
 		IsValid:   false,
 	}, tx)
-	expiresAt := time.Now().Add(token.RefreshTokenExpirationTime)
-	_, err = u.TokenRepo.Create(ctx, &repository.Token{
-		UserID:    user.ID,
-		Token:     tokenPairs.RefreshToken,
-		TokenType: token.RefreshTokenName,
-		IsValid:   true,
-		ExpiresAt: expiresAt,
-	}, tx)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := u.SetJWTCookie(w, tokenPairs.AccessToken, tokenPairs.RefreshToken, token.JWTTypeMember); err != nil {
+	_, err = u.generateTokenAndSave(ctx, w, user, tx)
+	if err != nil {
 		return nil, err
 	}
 
@@ -243,7 +199,7 @@ func (u *User) Login(ctx context.Context, w http.ResponseWriter, input *dto.Logi
 		return nil, err
 	}
 
-	// 8. Return the authentication response.
+	// Return the authentication response.
 	return &dto.AuthResponse{
 		User: &dto.AuthUser{
 			ID:    user.ID,
@@ -252,4 +208,58 @@ func (u *User) Login(ctx context.Context, w http.ResponseWriter, input *dto.Logi
 		AccessToken:  "",
 		RefreshToken: "",
 	}, nil
+}
+
+func (u *User) RefreshToken(ctx context.Context, w http.ResponseWriter, refreshToken string) (bool, error) {
+	_, err := u.TokenService.ValidateToken(refreshToken)
+	if err != nil {
+		return false, &svc.ApiError{
+			Status:  http.StatusUnauthorized,
+			Message: "Invalid refresh token",
+		}
+	}
+
+	validatedToken, err := u.TokenRepo.Get(ctx, &repository.TokenRepositoryFilter{
+		Token:     &refreshToken,
+		IsValid:   lo.ToPtr(true),
+		IsExpired: lo.ToPtr(false),
+		IsDeleted: lo.ToPtr(false),
+		TokenType: lo.ToPtr(token.RefreshTokenName),
+	})
+	if err != nil {
+		return false, err
+	}
+
+	tx, err := u.DB.BeginTxx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	user, err := u.UserRepo.Get(ctx, repository.UserRepositoryFilter{
+		ID: &validatedToken.UserID,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	err = u.TokenRepo.Update(ctx, &repository.Token{
+		UserID:    user.ID,
+		TokenType: token.RefreshTokenName,
+		IsValid:   false,
+	}, tx)
+	if err != nil {
+		return false, err
+	}
+
+	_, err = u.generateTokenAndSave(ctx, w, user, tx)
+	if err != nil {
+		return false, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }

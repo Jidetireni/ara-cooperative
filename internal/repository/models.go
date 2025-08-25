@@ -15,7 +15,6 @@ import (
 type Member struct {
 	ID             uuid.UUID             `json:"id"`
 	UserID         uuid.UUID             `json:"user_id"`
-	Code           string                `json:"code"`
 	Slug           string                `json:"slug"`
 	FirstName      string                `json:"first_name"`
 	LastName       string                `json:"last_name"`
