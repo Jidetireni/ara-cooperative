@@ -8,6 +8,9 @@ import (
 	"github.com/Jidetireni/ara-cooperative.git/internal/services"
 )
 
+// TODO: seperate some errors to be authomatically handled
+// like unique constraint errors, validation errors, etc.
+
 type envelope map[string]any
 
 func (h *Handlers) writeJSON(w http.ResponseWriter, status int, data interface{}, headers http.Header) error {
@@ -18,7 +21,12 @@ func (h *Handlers) writeJSON(w http.ResponseWriter, status int, data interface{}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
-	if err := json.NewEncoder(w).Encode(data); err != nil {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"data":   data,
+		"status": status,
+	}); err != nil {
 		return err
 	}
 
@@ -38,8 +46,15 @@ func (h *Handlers) errorResponse(w http.ResponseWriter, r *http.Request, message
 		env["error"] = apiErr.Message
 	}
 
-	if err := h.writeJSON(w, status, env, nil); err != nil {
-		h.logError(r, err)
-		w.WriteHeader(http.StatusInternalServerError)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"message": env["error"],
+		"status":  status,
+	}); err != nil {
+		h.logError(r, fmt.Errorf("failed to write error response: %w", err))
+		return
 	}
+
+	h.logError(r, fmt.Errorf("%v", message))
 }

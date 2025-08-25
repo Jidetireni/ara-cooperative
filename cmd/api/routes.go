@@ -10,5 +10,13 @@ func (s *Server) router() {
 		r.Use(middleware.Logger)
 
 		r.Get("/healthz", s.Handlers.HealthCheckHandler)
+
+		r.Post("/set-password", s.Handlers.SetPassword)
+		r.Post("/login", s.Handlers.Login)
+
+		r.Route("/members", func(r chi.Router) {
+			r.Post("/", s.Handlers.CreateMember)
+
+		})
 	})
 }

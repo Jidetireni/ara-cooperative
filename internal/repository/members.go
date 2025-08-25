@@ -13,6 +13,8 @@ type MemberRepository struct {
 	psql sq.StatementBuilderType
 }
 
+// TODO handle pagination and filtering very well
+
 func NewMemberRepository(db *sqlx.DB) *MemberRepository {
 	return &MemberRepository{
 		db:   db,
