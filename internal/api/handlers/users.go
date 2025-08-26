@@ -55,3 +55,27 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func (h *Handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		h.errorResponse(w, r, &svc.ApiError{
+			Status:  http.StatusUnauthorized,
+			Message: "refresh token is required",
+		})
+		return
+	}
+
+	refreshed, err := h.factory.Services.User.RefreshToken(r.Context(), w, cookie.Value)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+	err = h.writeJSON(w, http.StatusOK, refreshed, nil)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+}

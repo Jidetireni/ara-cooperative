@@ -98,6 +98,10 @@ func (tr *TokenRepository) Update(ctx context.Context, token *Token, tx *sqlx.Tx
 		builder = builder.Where(sq.Eq{"token": token.Token})
 	}
 
+	if token.UserID != uuid.Nil {
+		builder = builder.Where(sq.Eq{"user_id": token.UserID})
+	}
+
 	query, args, err := builder.ToSql()
 	if err != nil {
 		return err

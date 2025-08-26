@@ -69,6 +69,12 @@ func New(db *sqlx.DB, cfg *config.Config, tokenService TokenService, userRepo Us
 }
 
 func (u *User) SetPassword(ctx context.Context, w http.ResponseWriter, input *dto.SetPasswordInput) (*dto.AuthResponse, error) {
+	tx, err := u.DB.BeginTxx(ctx, nil)
+	if err != nil {
+		return &dto.AuthResponse{}, err
+	}
+	defer tx.Rollback()
+
 	user, err := u.UserRepo.Get(ctx, repository.UserRepositoryFilter{
 		Email: &input.Email,
 	})
@@ -103,11 +109,15 @@ func (u *User) SetPassword(ctx context.Context, w http.ResponseWriter, input *dt
 		}
 	}
 
-	tx, err := u.DB.BeginTxx(ctx, nil)
+	// invalidate token
+	err = u.TokenRepo.Update(ctx, &repository.Token{
+		UserID:    user.ID,
+		TokenType: token.SetPasswordToken,
+		IsValid:   false,
+	}, tx)
 	if err != nil {
-		return &dto.AuthResponse{}, err
+		return nil, err
 	}
-	defer tx.Rollback()
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -157,7 +167,6 @@ func (u *User) Login(ctx context.Context, w http.ResponseWriter, input *dto.Logi
 		Email: &input.Email,
 	})
 	if err != nil {
-		// Use a generic error message to prevent leaking information about whether a user exists.
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, &svc.ApiError{
 				Status:  http.StatusUnauthorized,
@@ -179,16 +188,6 @@ func (u *User) Login(ctx context.Context, w http.ResponseWriter, input *dto.Logi
 		return nil, err
 	}
 	defer tx.Rollback()
-
-	// Invalidate existing refresh tokens for the user.
-	err = u.TokenRepo.Update(ctx, &repository.Token{
-		UserID:    user.ID,
-		TokenType: token.RefreshTokenName,
-		IsValid:   false,
-	}, tx)
-	if err != nil {
-		return nil, err
-	}
 
 	_, err = u.generateTokenAndSave(ctx, w, user, tx)
 	if err != nil {
@@ -239,15 +238,6 @@ func (u *User) RefreshToken(ctx context.Context, w http.ResponseWriter, refreshT
 	user, err := u.UserRepo.Get(ctx, repository.UserRepositoryFilter{
 		ID: &validatedToken.UserID,
 	})
-	if err != nil {
-		return false, err
-	}
-
-	err = u.TokenRepo.Update(ctx, &repository.Token{
-		UserID:    user.ID,
-		TokenType: token.RefreshTokenName,
-		IsValid:   false,
-	}, tx)
 	if err != nil {
 		return false, err
 	}
