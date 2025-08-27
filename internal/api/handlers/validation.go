@@ -62,11 +62,11 @@ func (h *Handlers) decodeAndValidate(w http.ResponseWriter, r *http.Request, dst
 	return true
 }
 
-func (h *Handlers) validateField(fieldName, value, constraint string) error {
-	err := validate.Var(value, constraint)
-	if err != nil {
-		validationErrors := err.(validator.ValidationErrors)
-		return fmt.Errorf("%s: %s", fieldName, validationErrors[0].Translate(trans))
-	}
-	return nil
-}
+// func (h *Handlers) validateField(fieldName, value, constraint string) error {
+// 	err := validate.Var(value, constraint)
+// 	if err != nil {
+// 		validationErrors := err.(validator.ValidationErrors)
+// 		return fmt.Errorf("%s: %s", fieldName, validationErrors[0].Translate(trans))
+// 	}
+// 	return nil
+// }

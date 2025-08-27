@@ -3,26 +3,40 @@ package members
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Jidetireni/ara-cooperative.git/internal/config"
+	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
 	"github.com/Jidetireni/ara-cooperative.git/internal/dto"
 	"github.com/Jidetireni/ara-cooperative.git/internal/helpers"
 	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative.git/internal/services"
+	"github.com/Jidetireni/ara-cooperative.git/pkg/email"
+	"github.com/Jidetireni/ara-cooperative.git/pkg/token"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 var (
 	_ MemberRepository = (*repository.MemberRepository)(nil)
 	_ UserRepository   = (*repository.UserRepository)(nil)
+	_ RoleRepository   = (*repository.RoleRepository)(nil)
+	_ TokenRepository  = (*repository.TokenRepository)(nil)
+)
+
+var (
+	_ EmailPkg = (*email.Email)(nil)
 )
 
 type MemberRepository interface {
 	Create(ctx context.Context, member *repository.Member, tx *sqlx.Tx) (*repository.Member, error)
 	Exists(ctx context.Context, filter repository.MemberRepositoryFilter) (bool, error)
+	Get(ctx context.Context, filter repository.MemberRepositoryFilter) (*repository.Member, error)
 }
 
 type UserRepository interface {
@@ -30,19 +44,38 @@ type UserRepository interface {
 	Exists(ctx context.Context, filter repository.UserRepositoryFilter) (bool, error)
 }
 
+type RoleRepository interface {
+	List(ctx context.Context, filter *repository.RoleRepositoryFilter) ([]repository.Role, error)
+	AssignToUser(ctx context.Context, userID *uuid.UUID, roleIDs []uuid.UUID, tx *sqlx.Tx) error
+}
+
+type TokenRepository interface {
+	Create(ctx context.Context, token *repository.Token, tx *sqlx.Tx) (*repository.Token, error)
+}
+
+type EmailPkg interface {
+	Send(ctx context.Context, input *email.SendEmailInput) error
+}
+
 type Member struct {
 	DB               *sqlx.DB
 	Config           *config.Config
 	MemberRepository MemberRepository
 	UserRepository   UserRepository
+	RoleRepository   RoleRepository
+	TokenRepo        TokenRepository
+	Email            EmailPkg
 }
 
-func New(db *sqlx.DB, config *config.Config, memberRepo MemberRepository, userRepo UserRepository) *Member {
+func New(db *sqlx.DB, config *config.Config, memberRepo MemberRepository, userRepo UserRepository, roleRepo RoleRepository, tokenRepo TokenRepository, emailPkg EmailPkg) *Member {
 	return &Member{
 		DB:               db,
 		Config:           config,
 		MemberRepository: memberRepo,
 		UserRepository:   userRepo,
+		RoleRepository:   roleRepo,
+		TokenRepo:        tokenRepo,
+		Email:            emailPkg,
 	}
 }
 
@@ -81,17 +114,18 @@ func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.M
 
 	user, err := m.UserRepository.Create(ctx, &repository.User{
 		Email: input.Email,
+		PasswordHash: sql.NullString{
+			String: "",
+			Valid:  false,
+		},
 	}, tx)
 	if err != nil {
 		return &dto.Member{}, err
 	}
 
-	memberSlug := strings.ToLower(helpers.GenerateRandomString(8))
-	memberCode := fmt.Sprintf("ARA%06d", helpers.GetNextMemberNumber())
-
+	memberSlug := strings.ToLower(fmt.Sprintf("ara%06d", helpers.GetNextMemberNumber()))
 	member, err := m.MemberRepository.Create(ctx, &repository.Member{
 		UserID:    user.ID,
-		Code:      memberCode,
 		Slug:      memberSlug,
 		FirstName: input.FirstName,
 		LastName:  input.LastName,
@@ -113,19 +147,93 @@ func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.M
 		return &dto.Member{}, err
 	}
 
-	// TODO: send email
+	defaultPermissions := []string{
+		string(constants.MemberReadOwnPermission),
+		string(constants.MemberWriteOwnPermission),
+		string(constants.LedgerReadOwnPermission),
+		string(constants.LoanApplyPermission),
+	}
 
-	return m.mapRepositoryToHandler(*member), nil
+	roles, err := m.RoleRepository.List(ctx, &repository.RoleRepositoryFilter{
+		Permission: defaultPermissions,
+	})
+	if err != nil {
+		return &dto.Member{}, err
+	}
+
+	rolesIDs := lo.Map(roles, func(role repository.Role, _ int) uuid.UUID {
+		return role.ID
+	})
+
+	err = m.RoleRepository.AssignToUser(ctx, &user.ID, rolesIDs, tx)
+	if err != nil {
+		return &dto.Member{}, err
+	}
+
+	tokenUUID, err := uuid.NewRandom()
+	if err != nil {
+		return nil, err
+	}
+	tokenID := base64.URLEncoding.EncodeToString(tokenUUID[:])
+
+	expiresAt := time.Now().Add(15 * time.Minute)
+	_, err = m.TokenRepo.Create(ctx, &repository.Token{
+		UserID:    user.ID,
+		Token:     tokenID,
+		TokenType: token.SetPasswordToken,
+		IsValid:   true,
+		ExpiresAt: expiresAt,
+	}, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: send email with a stort live url to set password and sign up
+	// e.g http://localhost:5000/api/v1/set-password?token=some-token
+	setPasswordURL := fmt.Sprintf("%s/set-password?token=%s", m.Config.Server.FEURL, tokenID)
+	body := fmt.Sprintf("click here to set password: %s\n", setPasswordURL)
+
+	err = m.Email.Send(ctx, &email.SendEmailInput{
+		To:      input.Email,
+		Subject: "Set your password",
+		Body:    body,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return &dto.Member{}, err
+	}
+
+	return m.mapRepositoryToHandler(member), nil
 
 }
 
-func (m *Member) mapRepositoryToHandler(member repository.Member) *dto.Member {
+func (m *Member) GetBySlug(ctx context.Context, slug string) (*dto.Member, error) {
+	member, err := m.MemberRepository.Get(ctx, repository.MemberRepositoryFilter{
+		Slug: &slug,
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, &svc.ApiError{
+				Status:  http.StatusNotFound,
+				Message: "Member not found",
+			}
+		}
+		return nil, err
+	}
+
+	return m.mapRepositoryToHandler(member), nil
+}
+
+func (m *Member) mapRepositoryToHandler(member *repository.Member) *dto.Member {
 	return &dto.Member{
 		ID:             member.ID,
 		FirstName:      member.FirstName,
 		LastName:       member.LastName,
 		Slug:           member.Slug,
-		Code:           member.Code,
 		Address:        member.Address.String,
 		NextOfKinName:  member.NextOfKinName.String,
 		NextOfKinPhone: member.NextOfKinPhone.String,

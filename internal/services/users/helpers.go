@@ -3,7 +3,9 @@ package users
 import (
 	"context"
 	"net/http"
+	"slices"
 
+	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
 	"github.com/google/uuid"
 )
 
@@ -16,8 +18,9 @@ var userCtxKey = &contextKey{"user"}
 type UserContextValue struct {
 	Writer http.ResponseWriter
 	// User Identifiers
-	ID       uuid.UUID
-	MemberID *uuid.UUID
+	ID    uuid.UUID
+	Email string
+	Roles []string
 
 	SessionID uuid.UUID
 	// Auth
@@ -25,9 +28,6 @@ type UserContextValue struct {
 	AccessToken             string
 	IsAuthenticatedAsMember bool
 	IsAuthenticatedAsAdmin  bool
-
-	// Admin Details
-	Roles []string
 }
 
 func NewContextWithUser(ctx context.Context, user UserContextValue) context.Context {
@@ -38,4 +38,21 @@ func NewContextWithUser(ctx context.Context, user UserContextValue) context.Cont
 func FromContext(ctx context.Context) UserContextValue {
 	raw, _ := ctx.Value(userCtxKey).(UserContextValue)
 	return raw
+}
+
+func HasAdminPermissions(ctx context.Context, permissions []constants.UserPermmisions) bool {
+	user := FromContext(ctx)
+	if !user.IsAuthenticatedAsAdmin {
+		return false
+	}
+
+	userPermissions := user.Roles
+	for _, permission := range permissions {
+		if !slices.Contains(userPermissions, string(permission)) {
+			return false
+		}
+
+	}
+
+	return true
 }

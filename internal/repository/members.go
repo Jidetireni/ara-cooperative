@@ -13,6 +13,8 @@ type MemberRepository struct {
 	psql sq.StatementBuilderType
 }
 
+// TODO handle pagination and filtering very well
+
 func NewMemberRepository(db *sqlx.DB) *MemberRepository {
 	return &MemberRepository{
 		db:   db,
@@ -23,7 +25,7 @@ func NewMemberRepository(db *sqlx.DB) *MemberRepository {
 type MemberRepositoryFilter struct {
 	ID     *uuid.UUID
 	UserID *uuid.UUID
-	Code   *string
+	Slug   *string
 	Phone  *string
 }
 
@@ -37,7 +39,7 @@ func (mq *MemberRepository) buildQuery(filter MemberRepositoryFilter, queryType 
 	}
 
 	// Only get non-deleted members
-	builder = builder.Where(sq.Eq{"deleted_at": nil})
+	builder = builder.Where("deleted_at IS NULL")
 
 	if filter.ID != nil {
 		builder = builder.Where(sq.Eq{"id": *filter.ID})
@@ -45,9 +47,11 @@ func (mq *MemberRepository) buildQuery(filter MemberRepositoryFilter, queryType 
 	if filter.UserID != nil {
 		builder = builder.Where(sq.Eq{"user_id": *filter.UserID})
 	}
-	if filter.Code != nil {
-		builder = builder.Where(sq.Eq{"code": *filter.Code})
+
+	if filter.Slug != nil {
+		builder = builder.Where(sq.Eq{"slug": *filter.Slug})
 	}
+
 	if filter.Phone != nil {
 		builder = builder.Where(sq.Eq{"phone": *filter.Phone})
 	}
@@ -83,8 +87,8 @@ func (mq *MemberRepository) Exists(ctx context.Context, filter MemberRepositoryF
 
 func (mq *MemberRepository) Create(ctx context.Context, member *Member, tx *sqlx.Tx) (*Member, error) {
 	builder := mq.psql.Insert("members").
-		Columns("user_id", "code", "slug", "first_name", "last_name", "phone", "address", "next_of_kin_name", "next_of_kin_phone").
-		Values(member.UserID, member.Code, member.Slug, member.FirstName, member.LastName, member.Phone, member.Address, member.NextOfKinName, member.NextOfKinPhone).
+		Columns("user_id", "slug", "first_name", "last_name", "phone", "address", "next_of_kin_name", "next_of_kin_phone").
+		Values(member.UserID, member.Slug, member.FirstName, member.LastName, member.Phone, member.Address, member.NextOfKinName, member.NextOfKinPhone).
 		Suffix("RETURNING *")
 
 	query, args, err := builder.ToSql()
