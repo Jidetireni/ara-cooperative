@@ -21,7 +21,6 @@ type Member struct {
 	FirstName      string    `json:"first_name"`
 	LastName       string    `json:"last_name"`
 	Slug           string    `json:"slug"`
-	Code           string    `json:"code"`
 	Phone          string    `json:"phone"`
 	Address        string    `json:"address"`
 	NextOfKinName  string    `json:"next_of_kin_name"`
@@ -34,6 +33,12 @@ type User struct {
 	PasswordHash     string     `json:"password_hash,omitempty"`
 	EmailConfirmedAt *time.Time `json:"email_confirmed_at,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
+}
+
+type SetPasswordInput struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8"`
+	Token    string `json:"token" validate:"required"`
 }
 
 type LoginInput struct {
