@@ -211,9 +211,9 @@ func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.M
 
 }
 
-func (m *Member) GetBySlug(ctx context.Context, Slug string) (*dto.Member, error) {
+func (m *Member) GetBySlug(ctx context.Context, slug string) (*dto.Member, error) {
 	member, err := m.MemberRepository.Get(ctx, repository.MemberRepositoryFilter{
-		Slug: &Slug,
+		Slug: &slug,
 	})
 	if err != nil {
 		if err == sql.ErrNoRows {

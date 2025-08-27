@@ -30,7 +30,7 @@ func (u *User) generateTokenAndSave(ctx context.Context, w http.ResponseWriter, 
 		jwtType = token.JWTTypeAdmin
 	}
 
-	tokenPairs, err := u.TokenService.GenerateTokenPair(&token.TokenPairParams{
+	tokenPairs, err := u.TokenPkg.GenerateTokenPair(&token.TokenPairParams{
 		ID:      user.ID,
 		Email:   user.Email,
 		Roles:   userPermissions,

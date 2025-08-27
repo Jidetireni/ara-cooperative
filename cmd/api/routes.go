@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/Jidetireni/ara-cooperative.git/pkg/token"
-	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
@@ -14,6 +14,7 @@ func (s *Server) router() {
 
 		r.Post("/set-password", s.Handlers.SetPassword)
 		r.Post("/login", s.Handlers.Login)
+		r.Post("/refresh", s.Handlers.RefreshToken)
 
 		r.Route("/members", func(r chi.Router) {
 			r.Post("/", s.Handlers.CreateMember)

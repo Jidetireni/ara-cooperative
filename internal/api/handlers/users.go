@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/Jidetireni/ara-cooperative.git/internal/dto"
@@ -58,7 +59,9 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("refresh_token")
+	log.Printf("refresh token cookie: %v", cookie)
 	if err != nil {
+		log.Printf("error retrieving refresh token cookie: %v", err)
 		h.errorResponse(w, r, &svc.ApiError{
 			Status:  http.StatusUnauthorized,
 			Message: "refresh token is required",

@@ -39,7 +39,7 @@ func (mq *MemberRepository) buildQuery(filter MemberRepositoryFilter, queryType 
 	}
 
 	// Only get non-deleted members
-	builder = builder.Where(sq.Eq{"deleted_at": nil})
+	builder = builder.Where("deleted_at IS NULL")
 
 	if filter.ID != nil {
 		builder = builder.Where(sq.Eq{"id": *filter.ID})

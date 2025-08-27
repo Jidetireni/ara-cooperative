@@ -4,7 +4,6 @@ go 1.24.2
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/go-chi/chi v1.5.5
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/go-playground/locales v0.14.1
 	github.com/go-playground/universal-translator v0.18.1

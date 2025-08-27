@@ -10,7 +10,7 @@ import (
 	"github.com/Jidetireni/ara-cooperative.git/pkg/database"
 	"github.com/Jidetireni/ara-cooperative.git/pkg/email"
 	"github.com/Jidetireni/ara-cooperative.git/pkg/token"
-	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/v5"
 )
 
 type Repositories struct {
@@ -41,7 +41,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		return nil, nil, err
 	}
 
-	jwtToken := token.NewJwt(cfg.Auth.JWTSecret)
+	jwtToken := token.NewJwt(cfg.Auth.JWTSecret, cfg.IsDev)
 
 	email, err := email.New(cfg)
 	if err != nil {

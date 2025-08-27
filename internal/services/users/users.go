@@ -24,7 +24,7 @@ var (
 )
 
 var (
-	_ TokenService = (*token.Jwt)(nil)
+	_ TokenPkg = (*token.Jwt)(nil)
 )
 
 type UserRepository interface {
@@ -43,28 +43,28 @@ type TokenRepository interface {
 	Validate(ctx context.Context, filter *repository.TokenRepositoryFilter) (bool, error)
 }
 
-type TokenService interface {
+type TokenPkg interface {
 	GenerateTokenPair(params *token.TokenPairParams) (*token.TokenPair, error)
 	ValidateToken(tokenString string) (*token.UserClaims, error)
 }
 
 type User struct {
-	DB           *sqlx.DB
-	Config       *config.Config
-	TokenService TokenService
-	UserRepo     UserRepository
-	RoleRepo     RoleRepository
-	TokenRepo    TokenRepository
+	DB        *sqlx.DB
+	Config    *config.Config
+	TokenPkg  TokenPkg
+	UserRepo  UserRepository
+	RoleRepo  RoleRepository
+	TokenRepo TokenRepository
 }
 
-func New(db *sqlx.DB, cfg *config.Config, tokenService TokenService, userRepo UserRepository, roleRepo RoleRepository, tokenRepo TokenRepository) *User {
+func New(db *sqlx.DB, cfg *config.Config, tokenPkg TokenPkg, userRepo UserRepository, roleRepo RoleRepository, tokenRepo TokenRepository) *User {
 	return &User{
-		DB:           db,
-		Config:       cfg,
-		TokenService: tokenService,
-		UserRepo:     userRepo,
-		RoleRepo:     roleRepo,
-		TokenRepo:    tokenRepo,
+		DB:        db,
+		Config:    cfg,
+		TokenPkg:  tokenPkg,
+		UserRepo:  userRepo,
+		RoleRepo:  roleRepo,
+		TokenRepo: tokenRepo,
 	}
 }
 
@@ -210,7 +210,7 @@ func (u *User) Login(ctx context.Context, w http.ResponseWriter, input *dto.Logi
 }
 
 func (u *User) RefreshToken(ctx context.Context, w http.ResponseWriter, refreshToken string) (bool, error) {
-	_, err := u.TokenService.ValidateToken(refreshToken)
+	_, err := u.TokenPkg.ValidateToken(refreshToken)
 	if err != nil {
 		return false, &svc.ApiError{
 			Status:  http.StatusUnauthorized,

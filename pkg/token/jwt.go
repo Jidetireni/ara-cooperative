@@ -2,17 +2,20 @@ package token
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
 type Jwt struct {
 	SecretKey string
+	IsDev     bool
 }
 
-func NewJwt(secretKey string) *Jwt {
+func NewJwt(secretKey string, isDev bool) *Jwt {
 	return &Jwt{
 		SecretKey: secretKey,
+		IsDev:     isDev,
 	}
 }
 
@@ -51,12 +54,18 @@ func (j *Jwt) ValidateToken(tokenString string) (*UserClaims, error) {
 }
 
 func (j *Jwt) GenerateTokenPair(params *TokenPairParams) (*TokenPair, error) {
+
+	accessExpiry := AccessTokenExpirationTime
+	if j.IsDev {
+		accessExpiry = time.Hour * 24 * 1 // 1 day
+	}
+
 	accessToken, _, err := j.createToken(&CreatetokenParams{
 		ID:       params.ID,
 		Email:    params.Email,
 		Roles:    params.Roles,
 		JwtType:  params.JwtType,
-		Duration: AccessTokenExpirationTime,
+		Duration: accessExpiry,
 	})
 	if err != nil {
 		return nil, err

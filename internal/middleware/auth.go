@@ -46,7 +46,6 @@ func (m *Middleware) RequireAuth(requiredType token.JWTType) func(http.Handler) 
 			}
 
 			userCtx := users.UserContextValue{
-				Writer:                  w,
 				ID:                      claims.ID,
 				Email:                   claims.Email,
 				Roles:                   claims.Roles,
