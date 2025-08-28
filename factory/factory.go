@@ -5,6 +5,7 @@ import (
 	"github.com/Jidetireni/ara-cooperative.git/internal/middleware"
 	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
 	"github.com/Jidetireni/ara-cooperative.git/internal/services/members"
+	"github.com/Jidetireni/ara-cooperative.git/internal/services/savings"
 	"github.com/Jidetireni/ara-cooperative.git/internal/services/users"
 
 	"github.com/Jidetireni/ara-cooperative.git/pkg/database"
@@ -14,15 +15,18 @@ import (
 )
 
 type Repositories struct {
-	Member *repository.MemberRepository
-	User   *repository.UserRepository
-	Role   *repository.RoleRepository
-	Token  *repository.TokenRepository
+	Member      *repository.MemberRepository
+	User        *repository.UserRepository
+	Role        *repository.RoleRepository
+	Token       *repository.TokenRepository
+	Transaction *repository.TransactionRepository
+	Saving      *repository.SavingRepository
 }
 
 type Services struct {
-	Member *members.Member
-	User   *users.User
+	Member  *members.Member
+	User    *users.User
+	Savings *savings.Saving
 }
 
 type Factory struct {
@@ -52,6 +56,8 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 	memberRepo := repository.NewMemberRepository(db.DB)
 	roleRepo := repository.NewRoleRepository(db.DB)
 	tokenRepo := repository.NewTokenRepository(db.DB)
+	transactionRepo := repository.NewTransactionRepository(db.DB)
+	savingRepo := repository.NewSavingRepository(db.DB)
 
 	membersService := members.New(
 		db.DB,
@@ -72,6 +78,12 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		tokenRepo,
 	)
 
+	savingsService := savings.New(
+		db.DB,
+		savingRepo,
+		transactionRepo,
+	)
+
 	middleware := middleware.New(jwtToken)
 
 	return &Factory{
@@ -80,14 +92,17 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 			Router:   chi.NewRouter(),
 			Email:    email,
 			Services: &Services{
-				Member: membersService,
-				User:   usersService,
+				Member:  membersService,
+				User:    usersService,
+				Savings: savingsService,
 			},
 			Repositories: &Repositories{
-				Member: memberRepo,
-				User:   userRepo,
-				Role:   roleRepo,
-				Token:  tokenRepo,
+				Member:      memberRepo,
+				User:        userRepo,
+				Role:        roleRepo,
+				Token:       tokenRepo,
+				Transaction: transactionRepo,
+				Saving:      savingRepo,
 			},
 			Middleware: middleware,
 		}, func() {

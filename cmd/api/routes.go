@@ -24,5 +24,12 @@ func (s *Server) router() {
 				r.Get("/{slug}", s.Handlers.MemberBySlug)
 			})
 		})
+
+		r.Route("/savings", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
+				r.Post("/", s.Handlers.DepositSavings)
+			})
+		})
 	})
 }

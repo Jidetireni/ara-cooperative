@@ -6,6 +6,14 @@ import (
 	"github.com/google/uuid"
 )
 
+type SavingsStatus string
+
+const (
+	SavingsStatusPending   SavingsStatus = "PENDING"
+	SavingsStatusConfirmed SavingsStatus = "CONFIRMED"
+	SavingsStatusRejected  SavingsStatus = "REJECTED"
+)
+
 type CreateMemberInput struct {
 	Email          string `json:"email" validate:"required,email"`
 	FirstName      string `json:"first_name" validate:"required"`
@@ -73,4 +81,18 @@ type ChangePasswordInput struct {
 	CurrentPassword string `json:"current_password" validate:"required"`
 	NewPassword     string `json:"new_password" validate:"required,min=8"`
 	ConfirmPassword string `json:"confirm_password" validate:"required,eqfield=NewPassword"`
+}
+
+type SavingsDepositInput struct {
+	MemberID    uuid.UUID `json:"member_id" validate:"required"`
+	Amount      int64     `json:"amount" validate:"required,gt=0"`
+	Description string    `json:"description" validate:"required"`
+}
+
+type Savings struct {
+	TransactionID uuid.UUID     `json:"transaction_id"`
+	Amount        int64         `json:"amount"`
+	Reference     string        `json:"reference"`
+	Status        SavingsStatus `json:"status"`
+	CreatedAt     time.Time     `json:"created_at"`
 }
