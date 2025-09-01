@@ -30,6 +30,11 @@ func (s *Server) router() {
 				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
 				r.Post("/", s.Handlers.DepositSavings)
 			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
+				r.Get("/pending", s.Handlers.ListPendingDeposits)
+			})
 		})
 	})
 }

@@ -2,10 +2,12 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 type SavingRepository struct {
@@ -24,8 +26,23 @@ type SavingRepositoryFilter struct {
 	ID        *uuid.UUID
 	Confirmed *bool
 	Rejected  *bool
+	Type      *TransactionType
 }
 
+type Saving struct {
+	ID          uuid.UUID       `json:"id"`
+	MemberID    uuid.UUID       `json:"member_id"`
+	Description string          `json:"description"`
+	Reference   string          `json:"reference"`
+	Amount      int64           `json:"amount"`
+	Type        TransactionType `json:"type"`
+	CreatedAt   sql.NullTime    `json:"created_at"`
+
+	ConfirmedAt sql.NullTime `json:"confirmed_at"`
+	RejectedAt  sql.NullTime `json:"rejected_at"`
+}
+
+// Inside SavingRepository
 func (s *SavingRepository) buildQuery(filter SavingRepositoryFilter, opts QueryOptions) (string, []interface{}, error) {
 	var queryType QueryType = QueryTypeSelect
 	var err error
@@ -36,14 +53,33 @@ func (s *SavingRepository) buildQuery(filter SavingRepositoryFilter, opts QueryO
 	var builder sq.SelectBuilder
 	switch queryType {
 	case QueryTypeSelect:
-		builder = s.psql.Select("*")
+		builder = s.psql.Select(
+			"tr.id",
+			"tr.member_id",
+			"tr.description",
+			"tr.reference",
+			"tr.amount",
+			"tr.type",
+			"tr.created_at",
+			// savings status fields
+			"ss.confirmed_at",
+			"ss.rejected_at",
+		)
 	case QueryTypeCount:
 		builder = s.psql.Select("COUNT(*)")
 	}
-	builder = builder.From("savings_status ss")
 
+	// Join the two tables on the transaction ID
+	builder = builder.
+		From("transactions tr").
+		Join("savings_status ss ON tr.id = ss.transaction_id")
+
+	// Add filters specific to savings transactions
+	builder = builder.Where(sq.Eq{"tr.ledger": LedgerTypeSAVINGS})
+
+	// Now apply filters from the input `filter`
 	if filter.ID != nil {
-		builder = builder.Where(sq.Eq{"ss.id": *filter.ID})
+		builder = builder.Where(sq.Eq{"tr.id": *filter.ID})
 	}
 
 	if filter.Confirmed != nil {
@@ -60,6 +96,10 @@ func (s *SavingRepository) buildQuery(filter SavingRepositoryFilter, opts QueryO
 		} else {
 			builder = builder.Where(sq.Eq{"ss.rejected_at": nil})
 		}
+	}
+
+	if filter.Type != nil {
+		builder = builder.Where(sq.Eq{"tr.type": *filter.Type})
 	}
 
 	if queryType != QueryTypeCount {
@@ -106,4 +146,32 @@ func (s *SavingRepository) CreateStatus(ctx context.Context, savingStatus Saving
 
 	err = s.db.GetContext(ctx, &createdSavingsStatus, query, args...)
 	return &createdSavingsStatus, err
+}
+
+// Inside SavingRepository
+func (s *SavingRepository) List(ctx context.Context, filter SavingRepositoryFilter, opts QueryOptions) (*ListResult[Saving], error) {
+	query, args, err := s.buildQuery(filter, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	var savings []*Saving
+	err = s.db.SelectContext(ctx, &savings, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	listResult := ListResult[Saving]{
+		Items: lo.Slice(savings, 0, int(opts.Limit)),
+	}
+
+	if len(savings) > int(opts.Limit) {
+		lastItem := lo.LastOr(savings, nil)
+		if lastItem != nil {
+			nextCursor := EncodeCursor(lastItem.CreatedAt.Time, lastItem.ID)
+			listResult.NextCursor = &nextCursor
+		}
+	}
+
+	return &listResult, nil
 }

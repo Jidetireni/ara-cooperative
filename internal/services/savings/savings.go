@@ -21,6 +21,7 @@ type TransactionRepository interface {
 
 type SavingRepository interface {
 	CreateStatus(ctx context.Context, savingStatus repository.SavingsStatus, tx *sqlx.Tx) (*repository.SavingsStatus, error)
+	List(ctx context.Context, filter repository.SavingRepositoryFilter, opts repository.QueryOptions) (*repository.ListResult[repository.Saving], error)
 }
 
 type Saving struct {
@@ -69,25 +70,42 @@ func (s *Saving) Deposit(ctx context.Context, input dto.SavingsDepositInput) (dt
 		return dto.Savings{}, err
 	}
 
-	return s.MapRepositoryToDTO(transaction, savingsStatus), nil
+	return s.MapRepositoryToDTO(repository.Saving{
+		ID:          transaction.ID,
+		Amount:      transaction.Amount,
+		Description: transaction.Description,
+		Type:        transaction.Type,
+		Reference:   transaction.Reference,
+		CreatedAt:   transaction.CreatedAt,
+		ConfirmedAt: savingsStatus.ConfirmedAt,
+		RejectedAt:  savingsStatus.RejectedAt,
+	}), nil
 }
 
-func (s *Saving) MapRepositoryToDTO(transaction *repository.Transaction, savingsStatus *repository.SavingsStatus) dto.Savings {
-
-	status := dto.SavingsStatusPending
-	if savingsStatus.ConfirmedAt.Valid {
-		status = dto.SavingsStatusConfirmed
-	} else if savingsStatus.RejectedAt.Valid {
-		status = dto.SavingsStatusRejected
+func (s *Saving) MapRepositoryToDTO(src repository.Saving) dto.Savings {
+	var txnType dto.TransactionType
+	if src.Type == repository.TransactionTypeDEPOSIT {
+		txnType = dto.TransactionTypeDeposit
 	} else {
-		status = dto.SavingsStatusPending
+		txnType = dto.TransactionTypeWithdrawal
 	}
 
+	status := dto.SavingsStatusPending
+	if src.ConfirmedAt.Valid {
+		status = dto.SavingsStatusConfirmed
+	} else if src.RejectedAt.Valid {
+		status = dto.SavingsStatusRejected
+	}
+
+	createdAt := src.CreatedAt.Time
+
 	return dto.Savings{
-		TransactionID: transaction.ID,
-		Amount:        transaction.Amount,
-		Reference:     transaction.Reference,
-		Status:        status,
-		CreatedAt:     transaction.CreatedAt.Time,
+		TransactionID:   src.ID,
+		Amount:          src.Amount,
+		Description:     src.Description,
+		TransactionType: txnType,
+		Reference:       src.Reference,
+		Status:          status,
+		CreatedAt:       createdAt,
 	}
 }

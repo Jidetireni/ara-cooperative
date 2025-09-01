@@ -90,6 +90,11 @@ func decodeCursor(cursor string) (time.Time, uuid.UUID, error) {
 	return timeV, id, nil
 }
 
+func EncodeCursor(timev time.Time, id uuid.UUID) string {
+	cursorStr := fmt.Sprintf("%s|%s", timev.Format(time.RFC3339Nano), id.String())
+	return base64.StdEncoding.EncodeToString([]byte(cursorStr))
+}
+
 func ApplyPagination(builder sq.SelectBuilder, opts QueryOptions) (sq.SelectBuilder, error) {
 	sortResult, err := parseSort(opts.Sort)
 	if err != nil {
@@ -132,4 +137,9 @@ func ApplyPagination(builder sq.SelectBuilder, opts QueryOptions) (sq.SelectBuil
 	builder = builder.OrderBy(fmt.Sprintf("%s %s", sortResult.Column, string(sortResult.Order)))
 	builder = builder.Limit(uint64(min(opts.Limit, 100) + 1))
 	return builder, nil
+}
+
+type ListResult[T any] struct {
+	Items      []*T
+	NextCursor *string
 }

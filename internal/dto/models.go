@@ -7,11 +7,15 @@ import (
 )
 
 type SavingsStatus string
+type TransactionType string
 
 const (
 	SavingsStatusPending   SavingsStatus = "PENDING"
 	SavingsStatusConfirmed SavingsStatus = "CONFIRMED"
 	SavingsStatusRejected  SavingsStatus = "REJECTED"
+
+	TransactionTypeDeposit    TransactionType = "DEPOSIT"
+	TransactionTypeWithdrawal TransactionType = "WITHDRAWAL"
 )
 
 type CreateMemberInput struct {
@@ -90,9 +94,17 @@ type SavingsDepositInput struct {
 }
 
 type Savings struct {
-	TransactionID uuid.UUID     `json:"transaction_id"`
-	Amount        int64         `json:"amount"`
-	Reference     string        `json:"reference"`
-	Status        SavingsStatus `json:"status"`
-	CreatedAt     time.Time     `json:"created_at"`
+	TransactionID   uuid.UUID       `json:"transaction_id"`
+	Amount          int64           `json:"amount"`
+	Description     string          `json:"description"`
+	TransactionType TransactionType `json:"transaction_type"`
+	Reference       string          `json:"reference"`
+	Status          SavingsStatus   `json:"status"`
+	CreatedAt       time.Time       `json:"created_at"`
+}
+
+type QueryOptions struct {
+	Limit  uint32  `json:"limit"`
+	Cursor *string `json:"cursor,omitempty"`
+	Sort   *string `json:"sort,omitempty"`
 }

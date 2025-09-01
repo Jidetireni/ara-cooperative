@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/services"
+	"github.com/Jidetireni/ara-cooperative.git/internal/dto"
 )
 
 // TODO: seperate some errors to be authomatically handled
@@ -30,35 +30,29 @@ func (h *Handlers) writeJSON(w http.ResponseWriter, status int, data interface{}
 	return nil
 }
 
-func (h *Handlers) logError(r *http.Request, err error) {
-	fmt.Printf("Server Error for request %s: %v\n", r.URL.Path, err)
-}
-
-func (h *Handlers) errorResponse(w http.ResponseWriter, r *http.Request, message any) {
-	env := envelope{"error": message}
-
-	status := http.StatusInternalServerError
-	if apiErr, ok := message.(*services.ApiError); ok {
-		status = apiErr.Status
-		env["error"] = apiErr.Message
+func (h *Handlers) getPaginationParams(r *http.Request) *dto.QueryOptions {
+	// Default limit
+	var query dto.QueryOptions
+	query.Limit = 20
+	// Parse limit from query parameters
+	limitParam := r.URL.Query().Get("limit")
+	if limitParam != "" {
+		var limit int
+		_, err := fmt.Sscanf(limitParam, "%d", &limit)
+		if err == nil && limit > 0 {
+			query.Limit = uint32(limit)
+		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(map[string]any{
-		"message": env["error"],
-		"status":  status,
-	}); err != nil {
-		h.logError(r, fmt.Errorf("failed to write error response: %w", err))
-		return
+	cursorParam := r.URL.Query().Get("cursor")
+	if cursorParam != "" {
+		query.Cursor = &cursorParam
 	}
 
-	h.logError(r, fmt.Errorf("%v", message))
-}
+	sortParam := r.URL.Query().Get("sort")
+	if sortParam != "" {
+		query.Sort = &sortParam
+	}
 
-func (h *Handlers) forbiddenError(w http.ResponseWriter, r *http.Request) {
-	h.errorResponse(w, r, &services.ApiError{
-		Status:  http.StatusForbidden,
-		Message: "You don't have permission to access this resource",
-	})
+	return &query
 }
