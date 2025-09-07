@@ -25,6 +25,8 @@ func (s *Server) router() {
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
 				r.Get("/{slug}", s.Handlers.MemberBySlug)
+
+				r.Get("/me/savings/balance", s.Handlers.SavingsBalance)
 			})
 		})
 
@@ -37,6 +39,9 @@ func (s *Server) router() {
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
 				r.Get("/pending", s.Handlers.ListPendingDeposits)
+
+				r.Post("/{transaction_id}/confirm", s.Handlers.ConfirmSavings)
+				r.Post("/{transaction_id}/reject", s.Handlers.RejectSavings)
 			})
 		})
 	})

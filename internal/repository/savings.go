@@ -23,20 +23,21 @@ func NewSavingRepository(db *sqlx.DB) *SavingRepository {
 }
 
 type SavingRepositoryFilter struct {
-	ID        *uuid.UUID
-	Confirmed *bool
-	Rejected  *bool
-	Type      *TransactionType
+	TransactionID *uuid.UUID
+	MemberID      *uuid.UUID
+	Confirmed     *bool
+	Rejected      *bool
+	Type          *TransactionType
 }
 
 type Saving struct {
-	ID          uuid.UUID       `json:"id"`
-	MemberID    uuid.UUID       `json:"member_id"`
-	Description string          `json:"description"`
-	Reference   string          `json:"reference"`
-	Amount      int64           `json:"amount"`
-	Type        TransactionType `json:"type"`
-	CreatedAt   sql.NullTime    `json:"created_at"`
+	TransactionID uuid.UUID       `json:"id"`
+	MemberID      uuid.UUID       `json:"member_id"`
+	Description   string          `json:"description"`
+	Reference     string          `json:"reference"`
+	Amount        int64           `json:"amount"`
+	Type          TransactionType `json:"type"`
+	CreatedAt     sql.NullTime    `json:"created_at"`
 
 	ConfirmedAt sql.NullTime `json:"confirmed_at"`
 	RejectedAt  sql.NullTime `json:"rejected_at"`
@@ -44,8 +45,8 @@ type Saving struct {
 
 func (s *SavingRepository) applyFilter(builder sq.SelectBuilder, filter SavingRepositoryFilter) sq.SelectBuilder {
 	// Now apply filters from the input `filter`
-	if filter.ID != nil {
-		builder = builder.Where(sq.Eq{"tr.id": *filter.ID})
+	if filter.TransactionID != nil {
+		builder = builder.Where(sq.Eq{"tr.id": *filter.TransactionID})
 	}
 
 	if filter.Confirmed != nil {
@@ -66,6 +67,10 @@ func (s *SavingRepository) applyFilter(builder sq.SelectBuilder, filter SavingRe
 
 	if filter.Type != nil {
 		builder = builder.Where(sq.Eq{"tr.type": *filter.Type})
+	}
+
+	if filter.MemberID != nil {
+		builder = builder.Where(sq.Eq{"tr.member_id": *filter.MemberID})
 	}
 
 	return builder
@@ -186,10 +191,54 @@ func (s *SavingRepository) List(ctx context.Context, filter SavingRepositoryFilt
 	if len(savings) > int(opts.Limit) {
 		lastItem := lo.LastOr(savings, nil)
 		if lastItem != nil {
-			nextCursor := EncodeCursor(lastItem.CreatedAt.Time, lastItem.ID)
+			nextCursor := EncodeCursor(lastItem.CreatedAt.Time, lastItem.TransactionID)
 			listResult.NextCursor = &nextCursor
 		}
 	}
 
 	return &listResult, nil
+}
+
+func (s *SavingRepository) GetBalance(ctx context.Context, filter SavingRepositoryFilter) (int64, error) {
+	builder := s.psql.Select("COALESCE(SUM(tr.amount), 0) AS balance").
+		From("transactions tr").
+		Join("savings_status ss ON tr.id = ss.transaction_id").
+		Where(sq.Eq{"tr.ledger": LedgerTypeSAVINGS})
+
+	builder = s.applyFilter(builder, filter)
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return 0, err
+	}
+
+	var balance int64
+	if err := s.db.GetContext(ctx, &balance, query, args...); err != nil {
+		return 0, err
+	}
+
+	return balance, nil
+}
+
+func (s *SavingRepository) UpdateStatus(ctx context.Context, savingsStatus SavingsStatus, tx *sqlx.Tx) (*SavingsStatus, error) {
+	builder := s.psql.Update("savings_status").
+		Set("confirmed_at", savingsStatus.ConfirmedAt).
+		Set("rejected_at", savingsStatus.RejectedAt).
+		Where(sq.Eq{"transaction_id": savingsStatus.TransactionID}).
+		Where(sq.Expr("confirmed_at IS NULL AND rejected_at IS NULL")).
+		Suffix("RETURNING *")
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	var updatedSavingsStatus SavingsStatus
+	if tx != nil {
+		err = tx.GetContext(ctx, &updatedSavingsStatus, query, args...)
+		return &updatedSavingsStatus, err
+	}
+
+	err = s.db.GetContext(ctx, &updatedSavingsStatus, query, args...)
+	return &updatedSavingsStatus, err
 }
