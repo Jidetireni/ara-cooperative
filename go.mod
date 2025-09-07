@@ -1,4 +1,4 @@
-module github.com/Jidetireni/ara-cooperative.git
+module github.com/Jidetireni/ara-cooperative
 
 go 1.24.2
 

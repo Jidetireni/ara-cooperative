@@ -8,10 +8,10 @@ import (
 
 	"time"
 
-	"github.com/Jidetireni/ara-cooperative.git/factory"
-	"github.com/Jidetireni/ara-cooperative.git/internal/config"
-	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
-	"github.com/Jidetireni/ara-cooperative.git/pkg/database"
+	"github.com/Jidetireni/ara-cooperative/factory"
+	"github.com/Jidetireni/ara-cooperative/internal/config"
+	"github.com/Jidetireni/ara-cooperative/internal/repository"
+	"github.com/Jidetireni/ara-cooperative/pkg/database"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"golang.org/x/crypto/bcrypt"
@@ -29,15 +29,15 @@ type RootUser struct {
 	Password string
 }
 
-func NewSeeder(cfg *config.Config) (*Seed, func()) {
+func NewSeeder(cfg *config.Config) (*Seed, func(), error) {
 
 	if !cfg.IsDev {
-		log.Fatal("Seeding is only allowed in development environment")
+		return nil, nil, fmt.Errorf("seeding is only allowed in development environment")
 	}
 
 	factory, cleanup, err := factory.New(cfg)
 	if err != nil {
-		return nil, nil
+		return nil, nil, fmt.Errorf("failed to initialize factory: %w", err)
 	}
 
 	return &Seed{
@@ -45,7 +45,7 @@ func NewSeeder(cfg *config.Config) (*Seed, func()) {
 		DB:        factory.DB,
 		UserRepo:  factory.Repositories.User,
 		RolesRepo: factory.Repositories.Role,
-	}, cleanup
+	}, cleanup, nil
 }
 
 func (s *Seed) ResetDB() {
@@ -53,14 +53,17 @@ func (s *Seed) ResetDB() {
 	defer cancel()
 
 	fmt.Println("Resetting database...")
-	tablestoReset := []string{
-		"users",
-	}
-	for _, table := range tablestoReset {
-		_, err := s.DB.DB.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s;", table))
-		if err != nil {
-			log.Fatalf("Failed to reset table %s: %v", table, err)
-		}
+	_, err := s.DB.DB.ExecContext(ctx, `
+		TRUNCATE TABLE
+			savings_status,
+			transactions,
+			tokens,
+			members,
+			users
+		RESTART IDENTITY CASCADE;
+	`)
+	if err != nil {
+		log.Fatalf("Failed to reset database: %v", err)
 	}
 
 	fmt.Println("Database reset completed.")

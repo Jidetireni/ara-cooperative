@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/services"
+	"github.com/Jidetireni/ara-cooperative/internal/services"
 )
 
 func (h *Handlers) logError(r *http.Request, err error) {
@@ -32,11 +32,4 @@ func (h *Handlers) errorResponse(w http.ResponseWriter, r *http.Request, message
 	}
 
 	h.logError(r, fmt.Errorf("%v", message))
-}
-
-func (h *Handlers) forbiddenError(w http.ResponseWriter, r *http.Request) {
-	h.errorResponse(w, r, &services.ApiError{
-		Status:  http.StatusForbidden,
-		Message: "You don't have permission to access this resource",
-	})
 }

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
+	"github.com/Jidetireni/ara-cooperative/internal/constants"
 )
 
 type ApiError struct {
@@ -16,7 +16,7 @@ func (a *ApiError) Error() string {
 	return a.Message
 }
 
-func AdminForbiddenError(permissions []constants.UserPermmisions) *ApiError {
+func AdminForbiddenError(permissions []constants.UserPermissions) *ApiError {
 	rp := make([]string, len(permissions))
 	for i, p := range permissions {
 		rp[i] = string(p)

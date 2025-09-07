@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/dto"
+	"github.com/Jidetireni/ara-cooperative/internal/dto"
 )
 
 // TODO: seperate some errors to be authomatically handled

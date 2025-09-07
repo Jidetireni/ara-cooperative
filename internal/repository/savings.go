@@ -42,6 +42,35 @@ type Saving struct {
 	RejectedAt  sql.NullTime `json:"rejected_at"`
 }
 
+func (s *SavingRepository) applyFilter(builder sq.SelectBuilder, filter SavingRepositoryFilter) sq.SelectBuilder {
+	// Now apply filters from the input `filter`
+	if filter.ID != nil {
+		builder = builder.Where(sq.Eq{"tr.id": *filter.ID})
+	}
+
+	if filter.Confirmed != nil {
+		if *filter.Confirmed {
+			builder = builder.Where(sq.NotEq{"ss.confirmed_at": nil})
+		} else {
+			builder = builder.Where(sq.Eq{"ss.confirmed_at": nil})
+		}
+	}
+
+	if filter.Rejected != nil {
+		if *filter.Rejected {
+			builder = builder.Where(sq.NotEq{"ss.rejected_at": nil})
+		} else {
+			builder = builder.Where(sq.Eq{"ss.rejected_at": nil})
+		}
+	}
+
+	if filter.Type != nil {
+		builder = builder.Where(sq.Eq{"tr.type": *filter.Type})
+	}
+
+	return builder
+}
+
 // Inside SavingRepository
 func (s *SavingRepository) buildQuery(filter SavingRepositoryFilter, opts QueryOptions) (string, []interface{}, error) {
 	var queryType QueryType = QueryTypeSelect
@@ -76,33 +105,12 @@ func (s *SavingRepository) buildQuery(filter SavingRepositoryFilter, opts QueryO
 
 	// Add filters specific to savings transactions
 	builder = builder.Where(sq.Eq{"tr.ledger": LedgerTypeSAVINGS})
-
-	// Now apply filters from the input `filter`
-	if filter.ID != nil {
-		builder = builder.Where(sq.Eq{"tr.id": *filter.ID})
-	}
-
-	if filter.Confirmed != nil {
-		if *filter.Confirmed {
-			builder = builder.Where(sq.NotEq{"ss.confirmed_at": nil})
-		} else {
-			builder = builder.Where(sq.Eq{"ss.confirmed_at": nil})
-		}
-	}
-
-	if filter.Rejected != nil {
-		if *filter.Rejected {
-			builder = builder.Where(sq.NotEq{"ss.rejected_at": nil})
-		} else {
-			builder = builder.Where(sq.Eq{"ss.rejected_at": nil})
-		}
-	}
-
-	if filter.Type != nil {
-		builder = builder.Where(sq.Eq{"tr.type": *filter.Type})
-	}
+	builder = s.applyFilter(builder, filter)
 
 	if queryType != QueryTypeCount {
+		if opts.Sort == nil {
+			opts.Sort = lo.ToPtr("tr.created_at:desc")
+		}
 		builder, err = ApplyPagination(builder, opts)
 		if err != nil {
 			return "", nil, err
@@ -113,14 +121,24 @@ func (s *SavingRepository) buildQuery(filter SavingRepositoryFilter, opts QueryO
 }
 
 func (s *SavingRepository) GetStatus(ctx context.Context, filter SavingRepositoryFilter) (*SavingsStatus, error) {
-	query, args, err := s.buildQuery(filter, QueryOptions{})
+	builder := s.psql.Select(
+		"ss.id",
+		"ss.transaction_id",
+		"ss.confirmed_at",
+		"ss.rejected_at",
+	).From("savings_status ss").
+		Join("transactions tr ON ss.transaction_id = tr.id").
+		Where(sq.Eq{"tr.ledger": LedgerTypeSAVINGS})
+
+	// Apply filters from the input `filter`
+	builder = s.applyFilter(builder, filter)
+	query, args, err := builder.ToSql()
 	if err != nil {
 		return nil, err
 	}
 
 	var savingsStatus SavingsStatus
-	err = s.db.GetContext(ctx, &savingsStatus, query, args...)
-	if err != nil {
+	if err := s.db.GetContext(ctx, &savingsStatus, query, args...); err != nil {
 		return nil, err
 	}
 
@@ -162,7 +180,7 @@ func (s *SavingRepository) List(ctx context.Context, filter SavingRepositoryFilt
 	}
 
 	listResult := ListResult[Saving]{
-		Items: lo.Slice(savings, 0, int(opts.Limit)),
+		Items: lo.Slice(savings, 0, min(len(savings), int(opts.Limit))),
 	}
 
 	if len(savings) > int(opts.Limit) {

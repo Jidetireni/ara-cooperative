@@ -2,17 +2,18 @@ package savings
 
 import (
 	"context"
-	"time"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/dto"
-	"github.com/Jidetireni/ara-cooperative.git/internal/helpers"
-	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
+	"github.com/Jidetireni/ara-cooperative/internal/dto"
+	"github.com/Jidetireni/ara-cooperative/internal/helpers"
+	"github.com/Jidetireni/ara-cooperative/internal/repository"
+	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 	"github.com/jmoiron/sqlx"
 )
 
 var (
 	_ SavingRepository      = (*repository.SavingRepository)(nil)
 	_ TransactionRepository = (*repository.TransactionRepository)(nil)
+	_ MemberRepository      = (*repository.MemberRepository)(nil)
 )
 
 type TransactionRepository interface {
@@ -24,30 +25,44 @@ type SavingRepository interface {
 	List(ctx context.Context, filter repository.SavingRepositoryFilter, opts repository.QueryOptions) (*repository.ListResult[repository.Saving], error)
 }
 
+type MemberRepository interface {
+	Get(ctx context.Context, filter repository.MemberRepositoryFilter) (*repository.Member, error)
+}
+
 type Saving struct {
 	DB              *sqlx.DB
 	SavingRepo      SavingRepository
 	TransactionRepo TransactionRepository
+	MemberRepo      MemberRepository
 }
 
-func New(db *sqlx.DB, savingRepo SavingRepository, transactionRepo TransactionRepository) *Saving {
+func New(db *sqlx.DB, savingRepo SavingRepository, transactionRepo TransactionRepository, memberRepo MemberRepository) *Saving {
 	return &Saving{
 		DB:              db,
 		SavingRepo:      savingRepo,
 		TransactionRepo: transactionRepo,
+		MemberRepo:      memberRepo,
 	}
 }
 
 func (s *Saving) Deposit(ctx context.Context, input dto.SavingsDepositInput) (dto.Savings, error) {
+	user := users.FromContext(ctx)
+	member, err := s.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{
+		UserID: &user.ID,
+	})
+	if err != nil {
+		return dto.Savings{}, err
+	}
+
 	tx, err := s.DB.BeginTxx(ctx, nil)
 	if err != nil {
 		return dto.Savings{}, err
 	}
 	defer tx.Rollback()
 
-	reference := helpers.GenerateUniqueReference(input.MemberID, time.Now(), "savings_deposit")
+	reference := helpers.GenerateUniqueReference("savings_deposit")
 	transaction, err := s.TransactionRepo.Create(ctx, repository.Transaction{
-		MemberID:    input.MemberID,
+		MemberID:    member.ID,
 		Description: input.Description,
 		Amount:      input.Amount,
 		Reference:   reference,

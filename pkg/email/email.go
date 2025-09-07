@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/config"
+	"github.com/Jidetireni/ara-cooperative/internal/config"
 	"gopkg.in/gomail.v2"
 )
 

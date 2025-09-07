@@ -1,10 +1,10 @@
 [
 	{
-		"permission": "member:write",
+		"permission": "member:write:all",
 		"description": "Ability to create and update member data."
 	},
 	{
-		"permission": "member:read",
+		"permission": "member:read:all",
 		"description": "Ability to view all member data."
 	},
 	{
@@ -25,7 +25,7 @@
 		"description": "Ability to approve or deny a loan application."
 	},
 	{
-		"permission": "ledger:read",
+		"permission": "ledger:read:all",
 		"description": "Ability to view all financial ledgers."
 	},
 	{

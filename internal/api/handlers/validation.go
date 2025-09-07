@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	svc "github.com/Jidetireni/ara-cooperative.git/internal/services"
+	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/go-playground/locales/en"
 	ut "github.com/go-playground/universal-translator"
 	"github.com/go-playground/validator/v10"
@@ -61,12 +61,3 @@ func (h *Handlers) decodeAndValidate(w http.ResponseWriter, r *http.Request, dst
 
 	return true
 }
-
-// func (h *Handlers) validateField(fieldName, value, constraint string) error {
-// 	err := validate.Var(value, constraint)
-// 	if err != nil {
-// 		validationErrors := err.(validator.ValidationErrors)
-// 		return fmt.Errorf("%s: %s", fieldName, validationErrors[0].Translate(trans))
-// 	}
-// 	return nil
-// }

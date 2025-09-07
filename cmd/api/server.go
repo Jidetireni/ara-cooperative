@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Jidetireni/ara-cooperative.git/factory"
-	"github.com/Jidetireni/ara-cooperative.git/internal/api/handlers"
-	"github.com/Jidetireni/ara-cooperative.git/internal/config"
+	"github.com/Jidetireni/ara-cooperative/factory"
+	"github.com/Jidetireni/ara-cooperative/internal/api/handlers"
+	"github.com/Jidetireni/ara-cooperative/internal/config"
 )
 
 type Server struct {

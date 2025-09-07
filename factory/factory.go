@@ -1,16 +1,16 @@
 package factory
 
 import (
-	"github.com/Jidetireni/ara-cooperative.git/internal/config"
-	"github.com/Jidetireni/ara-cooperative.git/internal/middleware"
-	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
-	"github.com/Jidetireni/ara-cooperative.git/internal/services/members"
-	"github.com/Jidetireni/ara-cooperative.git/internal/services/savings"
-	"github.com/Jidetireni/ara-cooperative.git/internal/services/users"
+	"github.com/Jidetireni/ara-cooperative/internal/config"
+	"github.com/Jidetireni/ara-cooperative/internal/middleware"
+	"github.com/Jidetireni/ara-cooperative/internal/repository"
+	"github.com/Jidetireni/ara-cooperative/internal/services/members"
+	"github.com/Jidetireni/ara-cooperative/internal/services/savings"
+	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 
-	"github.com/Jidetireni/ara-cooperative.git/pkg/database"
-	"github.com/Jidetireni/ara-cooperative.git/pkg/email"
-	"github.com/Jidetireni/ara-cooperative.git/pkg/token"
+	"github.com/Jidetireni/ara-cooperative/pkg/database"
+	"github.com/Jidetireni/ara-cooperative/pkg/email"
+	"github.com/Jidetireni/ara-cooperative/pkg/token"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -82,6 +82,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		db.DB,
 		savingRepo,
 		transactionRepo,
+		memberRepo,
 	)
 
 	middleware := middleware.New(jwtToken)

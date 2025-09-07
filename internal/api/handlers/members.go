@@ -3,15 +3,15 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
-	"github.com/Jidetireni/ara-cooperative.git/internal/dto"
-	svc "github.com/Jidetireni/ara-cooperative.git/internal/services"
-	"github.com/Jidetireni/ara-cooperative.git/internal/services/users"
+	"github.com/Jidetireni/ara-cooperative/internal/constants"
+	"github.com/Jidetireni/ara-cooperative/internal/dto"
+	svc "github.com/Jidetireni/ara-cooperative/internal/services"
+	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 	"github.com/go-chi/chi/v5"
 )
 
 func (h *Handlers) CreateMember(w http.ResponseWriter, r *http.Request) {
-	permission := []constants.UserPermmisions{constants.MemberWritePermission}
+	permission := []constants.UserPermissions{constants.MemberWriteALLPermission}
 	hasPermission := users.HasAdminPermissions(r.Context(), permission)
 	if !hasPermission {
 		h.errorResponse(w, r, svc.AdminForbiddenError(permission))

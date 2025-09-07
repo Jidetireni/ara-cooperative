@@ -66,7 +66,7 @@ func (s *TransactionRepository) buildQuery(filter TransactionRepositoryFilter, o
 		builder = builder.Where(sq.Eq{"tr.reference": *filter.Reference})
 	}
 
-	if *opts.Type != QueryTypeCount {
+	if queryType != QueryTypeCount {
 		opts.Sort = lo.ToPtr("tr.created_at:desc")
 		builder, err = ApplyPagination(builder, opts)
 		if err != nil {
@@ -95,7 +95,7 @@ func (t TransactionRepository) Create(ctx context.Context, transaction Transacti
 	}
 
 	err = t.db.GetContext(ctx, &transaction, query, args...)
-	return &transaction, err
+	return &createdTransaction, err
 }
 
 func (t TransactionRepository) Get(ctx context.Context, filter TransactionRepositoryFilter) (*Transaction, error) {

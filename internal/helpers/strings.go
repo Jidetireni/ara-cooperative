@@ -18,12 +18,9 @@ func GenerateRandomString(length int) string {
 	return string(b)
 }
 
-func GenerateUniqueReference(id uuid.UUID, time time.Time, resource string) string {
-	idstr := id.String()
-	timeStr := time.Format("2006-01-02T15:04:05")
-
-	referenceStr := fmt.Sprintf("%s|%s|%s", idstr, timeStr, resource)
-	reference := base64.RawURLEncoding.EncodeToString([]byte(referenceStr))
-
-	return reference
+func GenerateUniqueReference(resource string) string {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	u := uuid.NewString()
+	raw := fmt.Sprintf("%s|%s|%s", resource, now, u)
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
 }

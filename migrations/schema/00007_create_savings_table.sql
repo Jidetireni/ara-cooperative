@@ -1,10 +1,11 @@
 -- +goose Up
 CREATE TABLE savings_status (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    transaction_id UUID REFERENCES transactions(id) NOT NULL,
+    transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
     confirmed_at TIMESTAMPTZ,
     rejected_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (transaction_id)
 );
 
 CREATE INDEX idx_savings_status_transaction_id ON savings_status(transaction_id);

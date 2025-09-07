@@ -56,7 +56,6 @@ type SetPasswordInput struct {
 type LoginInput struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required"`
-	// Admin    bool   `json:"admin,omitempty"`
 }
 
 type AuthResponse struct {
@@ -89,9 +88,8 @@ type ChangePasswordInput struct {
 }
 
 type SavingsDepositInput struct {
-	MemberID    uuid.UUID `json:"member_id" validate:"required"`
-	Amount      int64     `json:"amount" validate:"required,gt=0"`
-	Description string    `json:"description" validate:"required"`
+	Amount      int64  `json:"amount" validate:"required,gt=0"`
+	Description string `json:"description" validate:"required"`
 }
 
 type Savings struct {

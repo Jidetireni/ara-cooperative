@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/Jidetireni/ara-cooperative.git/pkg/token"
+	"github.com/Jidetireni/ara-cooperative/pkg/token"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )

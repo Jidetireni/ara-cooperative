@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
+	"github.com/Jidetireni/ara-cooperative/internal/constants"
 	"github.com/google/uuid"
 )
 
@@ -40,7 +40,7 @@ func FromContext(ctx context.Context) UserContextValue {
 	return raw
 }
 
-func HasAdminPermissions(ctx context.Context, permissions []constants.UserPermmisions) bool {
+func HasAdminPermissions(ctx context.Context, permissions []constants.UserPermissions) bool {
 	user := FromContext(ctx)
 	if !user.IsAuthenticatedAsAdmin {
 		return false
