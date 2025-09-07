@@ -56,6 +56,7 @@ type SetPasswordInput struct {
 type LoginInput struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required"`
+	// Admin    bool   `json:"admin,omitempty"`
 }
 
 type AuthResponse struct {

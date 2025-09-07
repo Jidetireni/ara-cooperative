@@ -17,7 +17,7 @@ CREATE TYPE ledger_type AS ENUM (
 
 CREATE TABLE transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    member_id UUID REFERENCES members(id) NOT NULL,
+    member_id UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
     description VARCHAR(255) NOT NULL,
     reference VARCHAR(255) NOT NULL UNIQUE,
     amount BIGINT NOT NULL,

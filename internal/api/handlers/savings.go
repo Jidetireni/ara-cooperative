@@ -6,6 +6,8 @@ import (
 	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
 	"github.com/Jidetireni/ara-cooperative.git/internal/dto"
 	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
+	svc "github.com/Jidetireni/ara-cooperative.git/internal/services"
+	"github.com/Jidetireni/ara-cooperative.git/internal/services/users"
 	"github.com/samber/lo"
 )
 
@@ -26,7 +28,18 @@ func (h *Handlers) DepositSavings(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) ListPendingDeposits(w http.ResponseWriter, r *http.Request) {
 	permission := []constants.UserPermmisions{constants.MemberReadPermission}
-	
+	hasPermission := users.HasAdminPermissions(r.Context(), permission)
+	if !hasPermission {
+		h.errorResponse(w, r, svc.AdminForbiddenError(permission))
+		return
+	}
+
+	filters := repository.SavingRepositoryFilter{
+		Confirmed: lo.ToPtr(false),
+		Rejected:  lo.ToPtr(false),
+		Type:      lo.ToPtr(repository.TransactionTypeDEPOSIT),
+	}
+
 	queryOptions := h.getPaginationParams(r)
 	options := repository.QueryOptions{}
 	if queryOptions != nil {
@@ -37,11 +50,7 @@ func (h *Handlers) ListPendingDeposits(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	savings, err := h.factory.Repositories.Saving.List(r.Context(), repository.SavingRepositoryFilter{
-		Confirmed: lo.ToPtr(false),
-		Rejected:  lo.ToPtr(false),
-		Type:      lo.ToPtr(repository.TransactionTypeDEPOSIT),
-	}, options)
+	savings, err := h.factory.Repositories.Saving.List(r.Context(), filters, options)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return

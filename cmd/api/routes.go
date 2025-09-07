@@ -17,7 +17,10 @@ func (s *Server) router() {
 		r.Post("/refresh", s.Handlers.RefreshToken)
 
 		r.Route("/members", func(r chi.Router) {
-			r.Post("/", s.Handlers.CreateMember)
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
+				r.Post("/", s.Handlers.CreateMember)
+			})
 
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
