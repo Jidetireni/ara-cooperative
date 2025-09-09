@@ -36,10 +36,11 @@ func (h *Handlers) ListPendingDeposits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filters := repository.SavingRepositoryFilter{
-		Confirmed: lo.ToPtr(false),
-		Rejected:  lo.ToPtr(false),
-		Type:      lo.ToPtr(repository.TransactionTypeDEPOSIT),
+	filters := repository.TransactionRepositoryFilter{
+		Confirmed:  lo.ToPtr(false),
+		Rejected:   lo.ToPtr(false),
+		Type:       lo.ToPtr(repository.TransactionTypeDEPOSIT),
+		LedgerType: repository.LedgerTypeSAVINGS,
 	}
 
 	queryOptions := h.getPaginationParams(r)
@@ -52,13 +53,13 @@ func (h *Handlers) ListPendingDeposits(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.factory.Repositories.Saving.List(r.Context(), filters, options)
+	result, err := h.factory.Repositories.Transaction.List(r.Context(), filters, options)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
 	}
 
-	dtoItems := lo.Map(result.Items, func(item *repository.Saving, _ int) dto.Savings {
+	dtoItems := lo.Map(result.Items, func(item *repository.PopTransaction, _ int) dto.Savings {
 		return *h.factory.Services.Savings.MapRepositoryToDTO(item)
 	})
 

@@ -17,21 +17,16 @@ import (
 )
 
 var (
-	_ SavingRepository      = (*repository.SavingRepository)(nil)
 	_ TransactionRepository = (*repository.TransactionRepository)(nil)
 	_ MemberRepository      = (*repository.MemberRepository)(nil)
 )
 
 type TransactionRepository interface {
-	Create(ctx context.Context, transaction repository.Transaction, tx *sqlx.Tx) (*repository.Transaction, error)
-}
-
-type SavingRepository interface {
-	CreateStatus(ctx context.Context, savingStatus repository.SavingsStatus, tx *sqlx.Tx) (*repository.SavingsStatus, error)
-	List(ctx context.Context, filter repository.SavingRepositoryFilter, opts repository.QueryOptions) (*repository.ListResult[repository.Saving], error)
-	UpdateStatus(ctx context.Context, savingsStatus repository.SavingsStatus, tx *sqlx.Tx) (*repository.SavingsStatus, error)
-	GetStatus(ctx context.Context, filter repository.SavingRepositoryFilter) (*repository.SavingsStatus, error)
-	GetBalance(ctx context.Context, filter repository.SavingRepositoryFilter) (int64, error)
+	Create(ctx context.Context, transaction repository.Transaction, tx *sqlx.Tx) (*repository.PopTransaction, error)
+	CreateStatus(ctx context.Context, transactionStatus repository.TransactionStatus, tx *sqlx.Tx) (*repository.TransactionStatus, error)
+	GetStatus(ctx context.Context, filter repository.TransactionRepositoryFilter) (*repository.TransactionStatus, error)
+	UpdateStatus(ctx context.Context, transactionStatus repository.TransactionStatus, tx *sqlx.Tx) (*repository.TransactionStatus, error)
+	GetBalance(ctx context.Context, filter repository.TransactionRepositoryFilter) (int64, error)
 }
 
 type MemberRepository interface {
@@ -40,15 +35,13 @@ type MemberRepository interface {
 
 type Saving struct {
 	DB              *sqlx.DB
-	SavingRepo      SavingRepository
 	TransactionRepo TransactionRepository
 	MemberRepo      MemberRepository
 }
 
-func New(db *sqlx.DB, savingRepo SavingRepository, transactionRepo TransactionRepository, memberRepo MemberRepository) *Saving {
+func New(db *sqlx.DB, transactionRepo TransactionRepository, memberRepo MemberRepository) *Saving {
 	return &Saving{
 		DB:              db,
-		SavingRepo:      savingRepo,
 		TransactionRepo: transactionRepo,
 		MemberRepo:      memberRepo,
 	}
@@ -82,7 +75,7 @@ func (s *Saving) Deposit(ctx context.Context, input dto.SavingsDepositInput) (*d
 		return &dto.Savings{}, err
 	}
 
-	savingsStatus, err := s.SavingRepo.CreateStatus(ctx, repository.SavingsStatus{
+	status, err := s.TransactionRepo.CreateStatus(ctx, repository.TransactionStatus{
 		TransactionID: transaction.ID,
 	}, tx)
 	if err != nil {
@@ -94,21 +87,22 @@ func (s *Saving) Deposit(ctx context.Context, input dto.SavingsDepositInput) (*d
 		return &dto.Savings{}, err
 	}
 
-	return s.MapRepositoryToDTO(&repository.Saving{
-		TransactionID: transaction.ID,
-		Amount:        transaction.Amount,
-		Description:   transaction.Description,
-		Type:          transaction.Type,
-		Reference:     transaction.Reference,
-		CreatedAt:     transaction.CreatedAt,
-		ConfirmedAt:   savingsStatus.ConfirmedAt,
-		RejectedAt:    savingsStatus.RejectedAt,
+	return s.MapRepositoryToDTO(&repository.PopTransaction{
+		ID:          transaction.ID,
+		Amount:      transaction.Amount,
+		Description: transaction.Description,
+		Type:        transaction.Type,
+		Reference:   transaction.Reference,
+		CreatedAt:   transaction.CreatedAt,
+		ConfirmedAt: status.ConfirmedAt,
+		RejectedAt:  status.RejectedAt,
 	}), nil
 }
 
 func (s *Saving) Confirm(ctx context.Context, transactionID *uuid.UUID) (bool, error) {
-	status, err := s.SavingRepo.GetStatus(ctx, repository.SavingRepositoryFilter{
-		TransactionID: transactionID,
+	status, err := s.TransactionRepo.GetStatus(ctx, repository.TransactionRepositoryFilter{
+		ID:         transactionID,
+		LedgerType: repository.LedgerTypeSAVINGS,
 	})
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -128,7 +122,7 @@ func (s *Saving) Confirm(ctx context.Context, transactionID *uuid.UUID) (bool, e
 		}
 	}
 
-	updatedStatus, err := s.SavingRepo.UpdateStatus(ctx, repository.SavingsStatus{
+	updatedStatus, err := s.TransactionRepo.UpdateStatus(ctx, repository.TransactionStatus{
 		TransactionID: *transactionID,
 		ConfirmedAt:   sql.NullTime{Time: time.Now(), Valid: true},
 	}, nil)
@@ -140,8 +134,9 @@ func (s *Saving) Confirm(ctx context.Context, transactionID *uuid.UUID) (bool, e
 }
 
 func (s *Saving) Reject(ctx context.Context, transactionID *uuid.UUID) (bool, error) {
-	status, err := s.SavingRepo.GetStatus(ctx, repository.SavingRepositoryFilter{
-		TransactionID: transactionID,
+	status, err := s.TransactionRepo.GetStatus(ctx, repository.TransactionRepositoryFilter{
+		ID:         transactionID,
+		LedgerType: repository.LedgerTypeSAVINGS,
 	})
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -161,7 +156,7 @@ func (s *Saving) Reject(ctx context.Context, transactionID *uuid.UUID) (bool, er
 		}
 	}
 
-	updatedStatus, err := s.SavingRepo.UpdateStatus(ctx, repository.SavingsStatus{
+	updatedStatus, err := s.TransactionRepo.UpdateStatus(ctx, repository.TransactionStatus{
 		TransactionID: *transactionID,
 		RejectedAt:    sql.NullTime{Time: time.Now(), Valid: true},
 	}, nil)
@@ -181,19 +176,21 @@ func (s *Saving) GetBalance(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 
-	totalDeposits, err := s.SavingRepo.GetBalance(ctx, repository.SavingRepositoryFilter{
-		MemberID:  &member.ID,
-		Type:      lo.ToPtr(repository.TransactionTypeDEPOSIT),
-		Confirmed: lo.ToPtr(true),
+	totalDeposits, err := s.TransactionRepo.GetBalance(ctx, repository.TransactionRepositoryFilter{
+		MemberID:   &member.ID,
+		Type:       lo.ToPtr(repository.TransactionTypeDEPOSIT),
+		Confirmed:  lo.ToPtr(true),
+		LedgerType: repository.LedgerTypeSAVINGS,
 	})
 	if err != nil {
 		return 0, err
 	}
 
-	totalWithdrawals, err := s.SavingRepo.GetBalance(ctx, repository.SavingRepositoryFilter{
-		MemberID:  &member.ID,
-		Type:      lo.ToPtr(repository.TransactionTypeWITHDRAWAL),
-		Confirmed: lo.ToPtr(true),
+	totalWithdrawals, err := s.TransactionRepo.GetBalance(ctx, repository.TransactionRepositoryFilter{
+		MemberID:   &member.ID,
+		Type:       lo.ToPtr(repository.TransactionTypeWITHDRAWAL),
+		Confirmed:  lo.ToPtr(true),
+		LedgerType: repository.LedgerTypeSAVINGS,
 	})
 	if err != nil {
 		return 0, err
@@ -202,7 +199,7 @@ func (s *Saving) GetBalance(ctx context.Context) (int64, error) {
 	return totalDeposits - totalWithdrawals, nil
 }
 
-func (s *Saving) MapRepositoryToDTO(src *repository.Saving) *dto.Savings {
+func (s *Saving) MapRepositoryToDTO(src *repository.PopTransaction) *dto.Savings {
 	var txnType dto.TransactionType
 	if src.Type == repository.TransactionTypeDEPOSIT {
 		txnType = dto.TransactionTypeDeposit
@@ -220,7 +217,7 @@ func (s *Saving) MapRepositoryToDTO(src *repository.Saving) *dto.Savings {
 	createdAt := src.CreatedAt.Time
 
 	return &dto.Savings{
-		TransactionID:   src.TransactionID,
+		TransactionID:   src.ID,
 		Amount:          src.Amount,
 		Description:     src.Description,
 		TransactionType: txnType,

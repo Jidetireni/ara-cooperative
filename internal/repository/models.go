@@ -127,14 +127,6 @@ type Role struct {
 	CreatedAt   time.Time      `json:"created_at"`
 }
 
-type SavingsStatus struct {
-	ID            uuid.UUID    `json:"id"`
-	TransactionID uuid.UUID    `json:"transaction_id"`
-	ConfirmedAt   sql.NullTime `json:"confirmed_at"`
-	RejectedAt    sql.NullTime `json:"rejected_at"`
-	CreatedAt     sql.NullTime `json:"created_at"`
-}
-
 type Token struct {
 	ID        uuid.UUID    `json:"id"`
 	UserID    uuid.UUID    `json:"user_id"`
@@ -157,6 +149,14 @@ type Transaction struct {
 	Ledger      LedgerType      `json:"ledger"`
 	CreatedAt   sql.NullTime    `json:"created_at"`
 	UpdatedAt   sql.NullTime    `json:"updated_at"`
+}
+
+type TransactionStatus struct {
+	ID            uuid.UUID    `json:"id"`
+	TransactionID uuid.UUID    `json:"transaction_id"`
+	ConfirmedAt   sql.NullTime `json:"confirmed_at"`
+	RejectedAt    sql.NullTime `json:"rejected_at"`
+	CreatedAt     sql.NullTime `json:"created_at"`
 }
 
 type User struct {

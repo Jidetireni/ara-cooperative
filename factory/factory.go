@@ -20,7 +20,6 @@ type Repositories struct {
 	Role        *repository.RoleRepository
 	Token       *repository.TokenRepository
 	Transaction *repository.TransactionRepository
-	Saving      *repository.SavingRepository
 }
 
 type Services struct {
@@ -57,7 +56,6 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 	roleRepo := repository.NewRoleRepository(db.DB)
 	tokenRepo := repository.NewTokenRepository(db.DB)
 	transactionRepo := repository.NewTransactionRepository(db.DB)
-	savingRepo := repository.NewSavingRepository(db.DB)
 
 	membersService := members.New(
 		db.DB,
@@ -80,7 +78,6 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 
 	savingsService := savings.New(
 		db.DB,
-		savingRepo,
 		transactionRepo,
 		memberRepo,
 	)
@@ -103,7 +100,6 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 				Role:        roleRepo,
 				Token:       tokenRepo,
 				Transaction: transactionRepo,
-				Saving:      savingRepo,
 			},
 			Middleware: middleware,
 		}, func() {
