@@ -94,7 +94,7 @@ func (t TransactionRepository) Create(ctx context.Context, transaction Transacti
 		return &createdTransaction, err
 	}
 
-	err = t.db.GetContext(ctx, &transaction, query, args...)
+	err = t.db.GetContext(ctx, &createdTransaction, query, args...)
 	return &createdTransaction, err
 }
 

@@ -107,3 +107,8 @@ type QueryOptions struct {
 	Cursor *string `json:"cursor,omitempty"`
 	Sort   *string `json:"sort,omitempty"`
 }
+
+type ListResponse[T any] struct {
+	Items      []T     `json:"items"`
+	NextCursor *string `json:"next_cursor,omitempty"`
+}

@@ -3,6 +3,7 @@ package savings
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"time"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
@@ -106,41 +107,69 @@ func (s *Saving) Deposit(ctx context.Context, input dto.SavingsDepositInput) (*d
 }
 
 func (s *Saving) Confirm(ctx context.Context, transactionID *uuid.UUID) (bool, error) {
-	status, err := s.SavingRepo.UpdateStatus(ctx, repository.SavingsStatus{
+	status, err := s.SavingRepo.GetStatus(ctx, repository.SavingRepositoryFilter{
+		TransactionID: transactionID,
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, &svc.ApiError{
+				Status:  404,
+				Message: "savings not found",
+			}
+		}
+
+		return false, err
+	}
+
+	if status.RejectedAt.Valid || status.ConfirmedAt.Valid {
+		return false, &svc.ApiError{
+			Status:  http.StatusConflict,
+			Message: "savings has already been confirmed",
+		}
+	}
+
+	updatedStatus, err := s.SavingRepo.UpdateStatus(ctx, repository.SavingsStatus{
 		TransactionID: *transactionID,
 		ConfirmedAt:   sql.NullTime{Time: time.Now(), Valid: true},
 	}, nil)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return false, &svc.ApiError{
-				Status:  404,
-				Message: "savings has already been confirmed",
-			}
-		}
-
 		return false, err
 	}
 
-	return status.ConfirmedAt.Valid, nil
+	return updatedStatus.ConfirmedAt.Valid, nil
 }
 
 func (s *Saving) Reject(ctx context.Context, transactionID *uuid.UUID) (bool, error) {
-	status, err := s.SavingRepo.UpdateStatus(ctx, repository.SavingsStatus{
-		TransactionID: *transactionID,
-		RejectedAt:    sql.NullTime{Time: time.Now(), Valid: true},
-	}, nil)
+	status, err := s.SavingRepo.GetStatus(ctx, repository.SavingRepositoryFilter{
+		TransactionID: transactionID,
+	})
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return false, &svc.ApiError{
 				Status:  404,
-				Message: "savings has already been rejected",
+				Message: "savings not found",
 			}
 		}
 
 		return false, err
 	}
 
-	return status.RejectedAt.Valid, nil
+	if status.RejectedAt.Valid || status.ConfirmedAt.Valid {
+		return false, &svc.ApiError{
+			Status:  http.StatusConflict,
+			Message: "savings has already been rejected",
+		}
+	}
+
+	updatedStatus, err := s.SavingRepo.UpdateStatus(ctx, repository.SavingsStatus{
+		TransactionID: *transactionID,
+		RejectedAt:    sql.NullTime{Time: time.Now(), Valid: true},
+	}, nil)
+	if err != nil {
+		return false, err
+	}
+
+	return updatedStatus.RejectedAt.Valid, nil
 }
 
 func (s *Saving) GetBalance(ctx context.Context) (int64, error) {
@@ -156,7 +185,6 @@ func (s *Saving) GetBalance(ctx context.Context) (int64, error) {
 		MemberID:  &member.ID,
 		Type:      lo.ToPtr(repository.TransactionTypeDEPOSIT),
 		Confirmed: lo.ToPtr(true),
-		Rejected:  lo.ToPtr(false),
 	})
 	if err != nil {
 		return 0, err
@@ -166,7 +194,6 @@ func (s *Saving) GetBalance(ctx context.Context) (int64, error) {
 		MemberID:  &member.ID,
 		Type:      lo.ToPtr(repository.TransactionTypeWITHDRAWAL),
 		Confirmed: lo.ToPtr(true),
-		Rejected:  lo.ToPtr(false),
 	})
 	if err != nil {
 		return 0, err

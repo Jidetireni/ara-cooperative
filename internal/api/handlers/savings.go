@@ -58,11 +58,14 @@ func (h *Handlers) ListPendingDeposits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	savings := lo.Map(result.Items, func(item *repository.Saving, _ int) dto.Savings {
+	dtoItems := lo.Map(result.Items, func(item *repository.Saving, _ int) dto.Savings {
 		return *h.factory.Services.Savings.MapRepositoryToDTO(item)
 	})
 
-	h.writeJSON(w, http.StatusOK, savings, nil)
+	h.writeJSON(w, http.StatusOK, dto.ListResponse[dto.Savings]{
+		Items:      dtoItems,
+		NextCursor: result.NextCursor,
+	}, nil)
 }
 
 func (h *Handlers) ConfirmSavings(w http.ResponseWriter, r *http.Request) {
