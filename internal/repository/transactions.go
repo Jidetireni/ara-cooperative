@@ -124,7 +124,7 @@ func (s *TransactionRepository) buildQuery(filter TransactionRepositoryFilter, o
 	return builder.ToSql()
 }
 
-func (t TransactionRepository) Create(ctx context.Context, transaction Transaction, tx *sqlx.Tx) (*PopTransaction, error) {
+func (t TransactionRepository) Create(ctx context.Context, transaction Transaction, tx *sqlx.Tx) (*Transaction, error) {
 	builder := t.psql.Insert("transactions").
 		Columns("member_id", "description", "reference", "amount", "type", "ledger").
 		Values(transaction.MemberID, transaction.Description, transaction.Reference, transaction.Amount, transaction.Type, transaction.Ledger).
@@ -135,7 +135,7 @@ func (t TransactionRepository) Create(ctx context.Context, transaction Transacti
 		return nil, err
 	}
 
-	var createdTransaction PopTransaction
+	var createdTransaction Transaction
 	if tx != nil {
 		err = tx.GetContext(ctx, &createdTransaction, query, args...)
 		return &createdTransaction, err

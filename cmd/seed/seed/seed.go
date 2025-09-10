@@ -55,7 +55,7 @@ func (s *Seed) ResetDB() {
 	fmt.Println("Resetting database...")
 	_, err := s.DB.DB.ExecContext(ctx, `
 		TRUNCATE TABLE
-			savings_status,
+			transaction_status,
 			transactions,
 			tokens,
 			members,

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
-	"github.com/Jidetireni/ara-cooperative/internal/helpers"
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
@@ -22,7 +21,7 @@ var (
 )
 
 type TransactionRepository interface {
-	Create(ctx context.Context, transaction repository.Transaction, tx *sqlx.Tx) (*repository.PopTransaction, error)
+	Create(ctx context.Context, transaction repository.Transaction, tx *sqlx.Tx) (*repository.Transaction, error)
 	CreateStatus(ctx context.Context, transactionStatus repository.TransactionStatus, tx *sqlx.Tx) (*repository.TransactionStatus, error)
 	GetStatus(ctx context.Context, filter repository.TransactionRepositoryFilter) (*repository.TransactionStatus, error)
 	UpdateStatus(ctx context.Context, transactionStatus repository.TransactionStatus, tx *sqlx.Tx) (*repository.TransactionStatus, error)
@@ -62,7 +61,7 @@ func (s *Saving) Deposit(ctx context.Context, input dto.SavingsDepositInput) (*d
 	}
 	defer tx.Rollback()
 
-	reference := helpers.GenerateUniqueReference("savings_deposit")
+	reference := lo.RandomString(12, lo.AlphanumericCharset)
 	transaction, err := s.TransactionRepo.Create(ctx, repository.Transaction{
 		MemberID:    member.ID,
 		Description: input.Description,

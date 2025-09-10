@@ -134,7 +134,7 @@ func ApplyPagination(builder sq.SelectBuilder, opts QueryOptions) (sq.SelectBuil
 
 	}
 
-	builder = builder.OrderBy(fmt.Sprintf("%s %s", sortResult.Column, string(sortResult.Order)))
+	builder = builder.OrderBy(fmt.Sprintf("%s %s, %s %s", sortResult.Column, string(sortResult.Order), idColumn, string(sortResult.Order)))
 	builder = builder.Limit(uint64(min(opts.Limit, 100) + 1))
 	return builder, nil
 }

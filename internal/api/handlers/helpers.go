@@ -40,18 +40,27 @@ func (h *Handlers) getPaginationParams(r *http.Request) *dto.QueryOptions {
 		var limit int
 		_, err := fmt.Sscanf(limitParam, "%d", &limit)
 		if err == nil && limit > 0 {
+			fmt.Println("Parsed Limit:", limit)
 			query.Limit = uint32(limit)
 		}
 	}
 
 	cursorParam := r.URL.Query().Get("cursor")
 	if cursorParam != "" {
-		query.Cursor = &cursorParam
+		var cursor string
+		_, err := fmt.Sscanf(cursorParam, "%s", &cursor)
+		if err == nil && cursor != "" {
+			query.Cursor = &cursor
+		}
 	}
 
 	sortParam := r.URL.Query().Get("sort")
 	if sortParam != "" {
-		query.Sort = &sortParam
+		var sort string
+		_, err := fmt.Sscanf(sortParam, "%s", &sort)
+		if err == nil && sort != "" {
+			query.Sort = &sort
+		}
 	}
 
 	return &query
