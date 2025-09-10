@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/services/users"
-	"github.com/Jidetireni/ara-cooperative.git/pkg/token"
+	"github.com/Jidetireni/ara-cooperative/internal/services/users"
+	"github.com/Jidetireni/ara-cooperative/pkg/token"
 )
 
 // RequireAuth is a middleware factory. It takes a required JWT type

@@ -6,11 +6,103 @@ package repository
 
 import (
 	"database/sql"
+	"database/sql/driver"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/sqlc-dev/pqtype"
 )
+
+type LedgerType string
+
+const (
+	LedgerTypeSAVINGS         LedgerType = "SAVINGS"
+	LedgerTypeSHARES          LedgerType = "SHARES"
+	LedgerTypeLOAN            LedgerType = "LOAN"
+	LedgerTypeFINES           LedgerType = "FINES"
+	LedgerTypeREGISTRATIONFEE LedgerType = "REGISTRATION_FEE"
+	LedgerTypeSPECIALDEPOSIT  LedgerType = "SPECIAL_DEPOSIT"
+)
+
+func (e *LedgerType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LedgerType(s)
+	case string:
+		*e = LedgerType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LedgerType: %T", src)
+	}
+	return nil
+}
+
+type NullLedgerType struct {
+	LedgerType LedgerType `json:"ledger_type"`
+	Valid      bool       `json:"valid"` // Valid is true if LedgerType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLedgerType) Scan(value interface{}) error {
+	if value == nil {
+		ns.LedgerType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LedgerType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLedgerType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LedgerType), nil
+}
+
+type TransactionType string
+
+const (
+	TransactionTypeDEPOSIT          TransactionType = "DEPOSIT"
+	TransactionTypeWITHDRAWAL       TransactionType = "WITHDRAWAL"
+	TransactionTypeLOANDISBURSEMENT TransactionType = "LOAN_DISBURSEMENT"
+	TransactionTypeLOANREPAYMENT    TransactionType = "LOAN_REPAYMENT"
+)
+
+func (e *TransactionType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = TransactionType(s)
+	case string:
+		*e = TransactionType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for TransactionType: %T", src)
+	}
+	return nil
+}
+
+type NullTransactionType struct {
+	TransactionType TransactionType `json:"transaction_type"`
+	Valid           bool            `json:"valid"` // Valid is true if TransactionType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullTransactionType) Scan(value interface{}) error {
+	if value == nil {
+		ns.TransactionType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.TransactionType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullTransactionType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.TransactionType), nil
+}
 
 type Member struct {
 	ID             uuid.UUID             `json:"id"`
@@ -45,6 +137,26 @@ type Token struct {
 	UpdatedAt sql.NullTime `json:"updated_at"`
 	DeletedAt sql.NullTime `json:"deleted_at"`
 	CreatedAt time.Time    `json:"created_at"`
+}
+
+type Transaction struct {
+	ID          uuid.UUID       `json:"id"`
+	MemberID    uuid.UUID       `json:"member_id"`
+	Description string          `json:"description"`
+	Reference   string          `json:"reference"`
+	Amount      int64           `json:"amount"`
+	Type        TransactionType `json:"type"`
+	Ledger      LedgerType      `json:"ledger"`
+	CreatedAt   sql.NullTime    `json:"created_at"`
+	UpdatedAt   sql.NullTime    `json:"updated_at"`
+}
+
+type TransactionStatus struct {
+	ID            uuid.UUID    `json:"id"`
+	TransactionID uuid.UUID    `json:"transaction_id"`
+	ConfirmedAt   sql.NullTime `json:"confirmed_at"`
+	RejectedAt    sql.NullTime `json:"rejected_at"`
+	CreatedAt     sql.NullTime `json:"created_at"`
 }
 
 type User struct {

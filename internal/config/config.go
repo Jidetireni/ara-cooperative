@@ -8,9 +8,11 @@ import (
 )
 
 type ServerConfig struct {
-	Env   string
-	Port  string
-	FEURL string
+	Env              string
+	Port             string
+	FEURL            string
+	RootUserEmail    string
+	RootUserPassword string
 }
 
 type DataBaseConfig struct {
@@ -40,6 +42,8 @@ func validateEnv() {
 		"ENV",
 		"PORT",
 		"FE_URL",
+		"ROOT_USER_EMAIL",
+		"ROOT_USER_PASSWORD",
 		// database
 		"DB_URL",
 		"DB_TYPE",
@@ -65,9 +69,11 @@ func New() *Config {
 
 	return &Config{
 		Server: ServerConfig{
-			Env:   os.Getenv("ENV"),
-			Port:  os.Getenv("PORT"),
-			FEURL: os.Getenv("FE_URL"),
+			Env:              os.Getenv("ENV"),
+			Port:             os.Getenv("PORT"),
+			FEURL:            os.Getenv("FE_URL"),
+			RootUserEmail:    os.Getenv("ROOT_USER_EMAIL"),
+			RootUserPassword: os.Getenv("ROOT_USER_PASSWORD"),
 		},
 		Database: DataBaseConfig{
 			URL:  os.Getenv("DB_URL"),
