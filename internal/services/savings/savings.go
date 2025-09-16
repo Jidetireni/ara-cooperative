@@ -48,6 +48,12 @@ func New(db *sqlx.DB, transactionRepo TransactionRepository, memberRepo MemberRe
 
 func (s *Saving) Deposit(ctx context.Context, input dto.SavingsDepositInput) (*dto.Savings, error) {
 	user := users.FromContext(ctx)
+	if user.ID == uuid.Nil {
+		return &dto.Savings{}, &svc.ApiError{
+			Status:  http.StatusUnauthorized,
+			Message: "unauthenticated",
+		}
+	}
 	member, err := s.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{
 		UserID: &user.ID,
 	})
@@ -59,7 +65,9 @@ func (s *Saving) Deposit(ctx context.Context, input dto.SavingsDepositInput) (*d
 	if err != nil {
 		return &dto.Savings{}, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	reference := lo.RandomString(12, lo.AlphanumericCharset)
 	transaction, err := s.TransactionRepo.Create(ctx, repository.Transaction{
@@ -168,6 +176,12 @@ func (s *Saving) Reject(ctx context.Context, transactionID *uuid.UUID) (bool, er
 
 func (s *Saving) GetBalance(ctx context.Context) (int64, error) {
 	user := users.FromContext(ctx)
+	if user.ID == uuid.Nil {
+		return 0, &svc.ApiError{
+			Status:  http.StatusUnauthorized,
+			Message: "unauthenticated",
+		}
+	}
 	member, err := s.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{
 		UserID: &user.ID,
 	})
@@ -200,10 +214,14 @@ func (s *Saving) GetBalance(ctx context.Context) (int64, error) {
 
 func (s *Saving) MapRepositoryToDTO(src *repository.PopTransaction) *dto.Savings {
 	var txnType dto.TransactionType
-	if src.Type == repository.TransactionTypeDEPOSIT {
+	switch src.Type {
+	case repository.TransactionTypeDEPOSIT:
 		txnType = dto.TransactionTypeDeposit
-	} else {
+	case repository.TransactionTypeWITHDRAWAL:
 		txnType = dto.TransactionTypeWithdrawal
+	default:
+		// Fallback to deposit if unknown type
+		txnType = dto.TransactionTypeDeposit
 	}
 
 	status := dto.SavingsStatusPending
