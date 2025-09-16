@@ -1,34 +1,37 @@
 package factory
 
 import (
-	"github.com/Jidetireni/ara-cooperative.git/internal/config"
-	"github.com/Jidetireni/ara-cooperative.git/internal/middleware"
-	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
-	"github.com/Jidetireni/ara-cooperative.git/internal/services/members"
-	"github.com/Jidetireni/ara-cooperative.git/internal/services/users"
+	"github.com/Jidetireni/ara-cooperative/internal/config"
+	"github.com/Jidetireni/ara-cooperative/internal/middleware"
+	"github.com/Jidetireni/ara-cooperative/internal/repository"
+	"github.com/Jidetireni/ara-cooperative/internal/services/members"
+	"github.com/Jidetireni/ara-cooperative/internal/services/savings"
+	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 
-	"github.com/Jidetireni/ara-cooperative.git/pkg/database"
-	"github.com/Jidetireni/ara-cooperative.git/pkg/email"
-	"github.com/Jidetireni/ara-cooperative.git/pkg/token"
+	"github.com/Jidetireni/ara-cooperative/pkg/database"
+	emailpkg "github.com/Jidetireni/ara-cooperative/pkg/email"
+	"github.com/Jidetireni/ara-cooperative/pkg/token"
 	"github.com/go-chi/chi/v5"
 )
 
 type Repositories struct {
-	Member *repository.MemberRepository
-	User   *repository.UserRepository
-	Role   *repository.RoleRepository
-	Token  *repository.TokenRepository
+	Member      *repository.MemberRepository
+	User        *repository.UserRepository
+	Role        *repository.RoleRepository
+	Token       *repository.TokenRepository
+	Transaction *repository.TransactionRepository
 }
 
 type Services struct {
-	Member *members.Member
-	User   *users.User
+	Member  *members.Member
+	User    *users.User
+	Savings *savings.Saving
 }
 
 type Factory struct {
 	DB           *database.PostgresDB
 	JWTToken     *token.Jwt
-	Email        *email.Email
+	Email        *emailpkg.Email
 	Router       *chi.Mux
 	Services     *Services
 	Repositories *Repositories
@@ -43,7 +46,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 
 	jwtToken := token.NewJwt(cfg.Auth.JWTSecret, cfg.IsDev)
 
-	email, err := email.New(cfg)
+	email, err := emailpkg.New(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -52,6 +55,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 	memberRepo := repository.NewMemberRepository(db.DB)
 	roleRepo := repository.NewRoleRepository(db.DB)
 	tokenRepo := repository.NewTokenRepository(db.DB)
+	transactionRepo := repository.NewTransactionRepository(db.DB)
 
 	membersService := members.New(
 		db.DB,
@@ -72,6 +76,12 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		tokenRepo,
 	)
 
+	savingsService := savings.New(
+		db.DB,
+		transactionRepo,
+		memberRepo,
+	)
+
 	middleware := middleware.New(jwtToken)
 
 	return &Factory{
@@ -80,14 +90,16 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 			Router:   chi.NewRouter(),
 			Email:    email,
 			Services: &Services{
-				Member: membersService,
-				User:   usersService,
+				Member:  membersService,
+				User:    usersService,
+				Savings: savingsService,
 			},
 			Repositories: &Repositories{
-				Member: memberRepo,
-				User:   userRepo,
-				Role:   roleRepo,
-				Token:  tokenRepo,
+				Member:      memberRepo,
+				User:        userRepo,
+				Role:        roleRepo,
+				Token:       tokenRepo,
+				Transaction: transactionRepo,
 			},
 			Middleware: middleware,
 		}, func() {

@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
+	"github.com/Jidetireni/ara-cooperative/internal/constants"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jmoiron/sqlx"
 	"github.com/jmoiron/sqlx/reflectx"

@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"github.com/Jidetireni/ara-cooperative.git/factory"
-	"github.com/Jidetireni/ara-cooperative.git/internal/config"
+	"github.com/Jidetireni/ara-cooperative/factory"
+	"github.com/Jidetireni/ara-cooperative/internal/config"
 )
 
 type Handlers struct {

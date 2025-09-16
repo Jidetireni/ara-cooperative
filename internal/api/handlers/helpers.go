@@ -2,10 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"strconv"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/services"
+	"github.com/Jidetireni/ara-cooperative/internal/dto"
 )
 
 // TODO: seperate some errors to be authomatically handled
@@ -30,35 +30,27 @@ func (h *Handlers) writeJSON(w http.ResponseWriter, status int, data interface{}
 	return nil
 }
 
-func (h *Handlers) logError(r *http.Request, err error) {
-	fmt.Printf("Server Error for request %s: %v\n", r.URL.Path, err)
-}
+func (h *Handlers) getPaginationParams(r *http.Request) *dto.QueryOptions {
+	// Default to 20, clamp to [1,100]
+	q := dto.QueryOptions{Limit: 20}
 
-func (h *Handlers) errorResponse(w http.ResponseWriter, r *http.Request, message any) {
-	env := envelope{"error": message}
-
-	status := http.StatusInternalServerError
-	if apiErr, ok := message.(*services.ApiError); ok {
-		status = apiErr.Status
-		env["error"] = apiErr.Message
+	// Parse & clamp limit
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.ParseUint(v, 10, 32); err == nil && n > 0 {
+			if n > 100 {
+				n = 100
+			}
+			q.Limit = uint32(n)
+		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(map[string]any{
-		"message": env["error"],
-		"status":  status,
-	}); err != nil {
-		h.logError(r, fmt.Errorf("failed to write error response: %w", err))
-		return
+	// Directly assign cursor & sort if present
+	if v := r.URL.Query().Get("cursor"); v != "" {
+		q.Cursor = &v
+	}
+	if v := r.URL.Query().Get("sort"); v != "" {
+		q.Sort = &v
 	}
 
-	h.logError(r, fmt.Errorf("%v", message))
-}
-
-func (h *Handlers) forbiddenError(w http.ResponseWriter, r *http.Request) {
-	h.errorResponse(w, r, &services.ApiError{
-		Status:  http.StatusForbidden,
-		Message: "You don't have permission to access this resource",
-	})
+	return &q
 }

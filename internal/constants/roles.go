@@ -5,24 +5,24 @@ import (
 	_ "embed"
 	"encoding/json"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
+	"github.com/Jidetireni/ara-cooperative/internal/repository"
 )
 
-type UserPermmisions string
+type UserPermissions string
 
 const (
-	MemberWritePermission    UserPermmisions = "member:write"
-	MemberReadPermission     UserPermmisions = "member:read"
-	MemberWriteOwnPermission UserPermmisions = "member:write:own"
-	MemberReadOwnPermission  UserPermmisions = "member:read:own"
+	MemberWriteALLPermission UserPermissions = "member:write:all"
+	MemberReadALLPermission  UserPermissions = "member:read:all"
+	MemberWriteOwnPermission UserPermissions = "member:write:own"
+	MemberReadOwnPermission  UserPermissions = "member:read:own"
 
-	LoanApplyPermission   UserPermmisions = "loan:apply"
-	LoanApprovePermission UserPermmisions = "loan:approve"
+	LoanApplyPermission   UserPermissions = "loan:apply"
+	LoanApprovePermission UserPermissions = "loan:approve"
 
-	LedgerReadPermission    UserPermmisions = "ledger:read"
-	LedgerReadOwnPermission UserPermmisions = "ledger:read:own"
+	LedgerReadALLPermission UserPermissions = "ledger:read:all"
+	LedgerReadOwnPermission UserPermissions = "ledger:read:own"
 
-	RoleAssignPermission UserPermmisions = "role:assign"
+	RoleAssignPermission UserPermissions = "role:assign"
 )
 
 type jsonRole struct {
@@ -36,14 +36,14 @@ var rolesJSON []byte
 var Roles []repository.Role
 
 func IsValidUserPermission(permission string) bool {
-	switch UserPermmisions(permission) {
-	case MemberWritePermission,
-		MemberReadPermission,
+	switch UserPermissions(permission) {
+	case MemberWriteALLPermission,
+		MemberReadALLPermission,
 		MemberWriteOwnPermission,
 		MemberReadOwnPermission,
 		LoanApplyPermission,
 		LoanApprovePermission,
-		LedgerReadPermission,
+		LedgerReadALLPermission,
 		LedgerReadOwnPermission,
 		RoleAssignPermission:
 		return true

@@ -6,6 +6,21 @@ import (
 	"github.com/google/uuid"
 )
 
+type SavingsStatus string
+type TransactionType string
+
+const (
+	SavingsStatusPending   SavingsStatus = "PENDING"
+	SavingsStatusConfirmed SavingsStatus = "CONFIRMED"
+	SavingsStatusRejected  SavingsStatus = "REJECTED"
+
+	TransactionTypeDeposit    TransactionType = "DEPOSIT"
+	TransactionTypeWithdrawal TransactionType = "WITHDRAWAL"
+
+	TransactionTypeLoanDisbursement TransactionType = "LOAN_DISBURSEMENT"
+	TransactionTypeLoanRepayment    TransactionType = "LOAN_REPAYMENT"
+)
+
 type CreateMemberInput struct {
 	Email          string `json:"email" validate:"required,email"`
 	FirstName      string `json:"first_name" validate:"required"`
@@ -73,4 +88,30 @@ type ChangePasswordInput struct {
 	CurrentPassword string `json:"current_password" validate:"required"`
 	NewPassword     string `json:"new_password" validate:"required,min=8"`
 	ConfirmPassword string `json:"confirm_password" validate:"required,eqfield=NewPassword"`
+}
+
+type SavingsDepositInput struct {
+	Amount      int64  `json:"amount" validate:"required,gt=0"`
+	Description string `json:"description" validate:"required"`
+}
+
+type Savings struct {
+	TransactionID   uuid.UUID       `json:"transaction_id"`
+	Amount          int64           `json:"amount"`
+	Description     string          `json:"description"`
+	TransactionType TransactionType `json:"transaction_type"`
+	Reference       string          `json:"reference"`
+	Status          SavingsStatus   `json:"status"`
+	CreatedAt       time.Time       `json:"created_at"`
+}
+
+type QueryOptions struct {
+	Limit  uint32  `json:"limit"`
+	Cursor *string `json:"cursor,omitempty"`
+	Sort   *string `json:"sort,omitempty"`
+}
+
+type ListResponse[T any] struct {
+	Items      []T     `json:"items"`
+	NextCursor *string `json:"next_cursor"`
 }

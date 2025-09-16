@@ -6,9 +6,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/constants"
-	"github.com/Jidetireni/ara-cooperative.git/internal/repository"
-	"github.com/Jidetireni/ara-cooperative.git/pkg/token"
+	"github.com/Jidetireni/ara-cooperative/internal/constants"
+	"github.com/Jidetireni/ara-cooperative/internal/repository"
+	"github.com/Jidetireni/ara-cooperative/pkg/token"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
 )

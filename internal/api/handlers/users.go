@@ -4,8 +4,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/Jidetireni/ara-cooperative.git/internal/dto"
-	svc "github.com/Jidetireni/ara-cooperative.git/internal/services"
+	"github.com/Jidetireni/ara-cooperative/internal/dto"
+	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 )
 
 func (h *Handlers) SetPassword(w http.ResponseWriter, r *http.Request) {

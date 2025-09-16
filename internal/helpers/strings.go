@@ -1,6 +1,8 @@
 package helpers
 
-import "math/rand"
+import (
+	"math/rand"
+)
 
 func GenerateRandomString(length int) string {
 	allowedChars := "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
