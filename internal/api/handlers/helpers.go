@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
 )
@@ -31,37 +31,26 @@ func (h *Handlers) writeJSON(w http.ResponseWriter, status int, data interface{}
 }
 
 func (h *Handlers) getPaginationParams(r *http.Request) *dto.QueryOptions {
-	// Default limit
-	var query dto.QueryOptions
-	query.Limit = 20
-	// Parse limit from query parameters
-	limitParam := r.URL.Query().Get("limit")
-	if limitParam != "" {
-		var limit int
-		_, err := fmt.Sscanf(limitParam, "%d", &limit)
-		if err == nil && limit > 0 {
-			fmt.Println("Parsed Limit:", limit)
-			query.Limit = uint32(limit)
+	// Default to 20, clamp to [1,100]
+	q := dto.QueryOptions{Limit: 20}
+
+	// Parse & clamp limit
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.ParseUint(v, 10, 32); err == nil && n > 0 {
+			if n > 100 {
+				n = 100
+			}
+			q.Limit = uint32(n)
 		}
 	}
 
-	cursorParam := r.URL.Query().Get("cursor")
-	if cursorParam != "" {
-		var cursor string
-		_, err := fmt.Sscanf(cursorParam, "%s", &cursor)
-		if err == nil && cursor != "" {
-			query.Cursor = &cursor
-		}
+	// Directly assign cursor & sort if present
+	if v := r.URL.Query().Get("cursor"); v != "" {
+		q.Cursor = &v
+	}
+	if v := r.URL.Query().Get("sort"); v != "" {
+		q.Sort = &v
 	}
 
-	sortParam := r.URL.Query().Get("sort")
-	if sortParam != "" {
-		var sort string
-		_, err := fmt.Sscanf(sortParam, "%s", &sort)
-		if err == nil && sort != "" {
-			query.Sort = &sort
-		}
-	}
-
-	return &query
+	return &q
 }

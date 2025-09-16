@@ -52,17 +52,17 @@ func (s *TransactionRepository) applyFilter(builder sq.SelectBuilder, filter Tra
 
 	if filter.Confirmed != nil {
 		if *filter.Confirmed {
-			builder = builder.Where(sq.NotEq{"ts.confirmed_at": nil})
+			builder = builder.Where("ts.confirmed_at IS NOT NULL")
 		} else {
-			builder = builder.Where(sq.Eq{"ts.confirmed_at": nil})
+			builder = builder.Where("ts.confirmed_at IS NULL")
 		}
 	}
 
 	if filter.Rejected != nil {
 		if *filter.Rejected {
-			builder = builder.Where(sq.NotEq{"ts.rejected_at": nil})
+			builder = builder.Where("ts.rejected_at IS NOT NULL")
 		} else {
-			builder = builder.Where(sq.Eq{"ts.rejected_at": nil})
+			builder = builder.Where("ts.rejected_at IS NULL")
 		}
 	}
 

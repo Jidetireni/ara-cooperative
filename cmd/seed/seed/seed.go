@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 
 	"time"
 
@@ -35,41 +34,52 @@ func NewSeeder(cfg *config.Config) (*Seed, func(), error) {
 		return nil, nil, fmt.Errorf("seeding is only allowed in development environment")
 	}
 
-	factory, cleanup, err := factory.New(cfg)
+	fx, cleanup, err := factory.New(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize factory: %w", err)
 	}
 
 	return &Seed{
 		Config:    cfg,
-		DB:        factory.DB,
-		UserRepo:  factory.Repositories.User,
-		RolesRepo: factory.Repositories.Role,
+		DB:        fx.DB,
+		UserRepo:  fx.Repositories.User,
+		RolesRepo: fx.Repositories.Role,
 	}, cleanup, nil
 }
 
-func (s *Seed) ResetDB() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func (s *Seed) ResetDB() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	fmt.Println("Resetting database...")
-	_, err := s.DB.DB.ExecContext(ctx, `
-		TRUNCATE TABLE
-			transaction_status,
-			transactions,
-			tokens,
-			members,
-			users
-		RESTART IDENTITY CASCADE;
-	`)
+	tx, err := s.DB.DB.BeginTxx(ctx, nil)
 	if err != nil {
-		log.Fatalf("Failed to reset database: %v", err)
+		return fmt.Errorf("begin tx: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, `
+        TRUNCATE TABLE
+            transaction_status,
+            transactions,
+            tokens,
+            members,
+            users
+        RESTART IDENTITY CASCADE;
+    `)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("reset database: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit reset: %w", err)
 	}
 
 	fmt.Println("Database reset completed.")
+	return nil
 }
 
-func (s *Seed) CreateRootUser() {
+func (s *Seed) CreateRootUser() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -81,12 +91,24 @@ func (s *Seed) CreateRootUser() {
 
 	roles, err := s.RolesRepo.List(ctx, &repository.RoleRepositoryFilter{})
 	if err != nil {
-		log.Fatalf("Failed to fetch roles: %v", err)
+		return fmt.Errorf("fetch roles: %w", err)
+	}
+	if len(roles) == 0 {
+		return fmt.Errorf("no roles found; ensure roles are seeded before creating root user")
+	}
+
+	exists, err := s.UserRepo.Exists(ctx, repository.UserRepositoryFilter{Email: &rootUser.Email})
+	if err != nil {
+		return fmt.Errorf("check root user existence: %w", err)
+	}
+	if exists {
+		fmt.Println("Root user already exists. Skipping creation.")
+		return nil
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(rootUser.Password), bcrypt.DefaultCost)
 	if err != nil {
-		log.Fatalf("Failed to hash password: %v", err)
+		return fmt.Errorf("hash password: %w", err)
 	}
 
 	userModel := &repository.User{
@@ -101,19 +123,32 @@ func (s *Seed) CreateRootUser() {
 		},
 	}
 
-	createdUser, err := s.UserRepo.Create(ctx, userModel, nil)
+	// Begin transaction for atomicity
+	tx, err := s.DB.DB.BeginTxx(ctx, nil)
 	if err != nil {
-		log.Fatalf("Failed to create root user: %v", err)
+		return fmt.Errorf("begin tx: %w", err)
 	}
 
-	rolesID := lo.Map(roles, func(r repository.Role, _ int) uuid.UUID {
+	createdUser, err := s.UserRepo.Create(ctx, userModel, tx)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("create root user: %w", err)
+	}
+
+	roleIDs := lo.Map(roles, func(r repository.Role, _ int) uuid.UUID {
 		return r.ID
 	})
 
-	err = s.RolesRepo.AssignToUser(ctx, &createdUser.ID, rolesID, nil)
+	err = s.RolesRepo.AssignToUser(ctx, &createdUser.ID, roleIDs, nil)
 	if err != nil {
-		log.Fatalf("Failed to assign roles to root user: %v", err)
+		_ = tx.Rollback()
+		return fmt.Errorf("assign roles to root user: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit root user creation: %w", err)
 	}
 
 	fmt.Println("Root user created successfully.")
+	return nil
 }

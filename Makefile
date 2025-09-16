@@ -50,8 +50,9 @@ migration/reset:
 
 sqlc/generate:
 	@echo "Generating SQLC code.."
-	docker exec -it $(API_CONTAINER_NAME) sqlc generate
+	# Generate SQL code
+	docker exec $(API_CONTAINER_NAME) sqlc generate
 
 db/seed:
 	@echo "Seeding database..."
-	docker exec -it $(API_CONTAINER_NAME) go run ./cmd/seed
+	docker exec $(API_CONTAINER_NAME) go run ./cmd/seed

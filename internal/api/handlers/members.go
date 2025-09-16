@@ -11,10 +11,10 @@ import (
 )
 
 func (h *Handlers) CreateMember(w http.ResponseWriter, r *http.Request) {
-	permission := []constants.UserPermissions{constants.MemberWriteALLPermission}
-	hasPermission := users.HasAdminPermissions(r.Context(), permission)
+	permissions := []constants.UserPermissions{constants.MemberWriteALLPermission}
+	hasPermission := users.HasAdminPermissions(r.Context(), permissions)
 	if !hasPermission {
-		h.errorResponse(w, r, svc.AdminForbiddenError(permission))
+		h.errorResponse(w, r, svc.AdminForbiddenError(permissions))
 		return
 	}
 	var input dto.CreateMemberInput

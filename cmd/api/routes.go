@@ -24,9 +24,11 @@ func (s *Server) router() {
 
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
-				r.Get("/{slug}", s.Handlers.MemberBySlug)
+				r.Route("/me", func(r chi.Router) {
+					r.Get("/savings/balance", s.Handlers.SavingsBalance)
+				})
 
-				r.Get("/me/savings/balance", s.Handlers.SavingsBalance)
+				r.Get("/{slug}", s.Handlers.MemberBySlug)
 			})
 		})
 

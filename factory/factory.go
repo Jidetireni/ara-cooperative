@@ -9,7 +9,7 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 
 	"github.com/Jidetireni/ara-cooperative/pkg/database"
-	"github.com/Jidetireni/ara-cooperative/pkg/email"
+	emailpkg "github.com/Jidetireni/ara-cooperative/pkg/email"
 	"github.com/Jidetireni/ara-cooperative/pkg/token"
 	"github.com/go-chi/chi/v5"
 )
@@ -31,7 +31,7 @@ type Services struct {
 type Factory struct {
 	DB           *database.PostgresDB
 	JWTToken     *token.Jwt
-	Email        *email.Email
+	Email        *emailpkg.Email
 	Router       *chi.Mux
 	Services     *Services
 	Repositories *Repositories
@@ -46,7 +46,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 
 	jwtToken := token.NewJwt(cfg.Auth.JWTSecret, cfg.IsDev)
 
-	email, err := email.New(cfg)
+	email, err := emailpkg.New(cfg)
 	if err != nil {
 		return nil, nil, err
 	}

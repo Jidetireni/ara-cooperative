@@ -16,6 +16,9 @@ const (
 
 	TransactionTypeDeposit    TransactionType = "DEPOSIT"
 	TransactionTypeWithdrawal TransactionType = "WITHDRAWAL"
+
+	TransactionTypeLoanDisbursement TransactionType = "LOAN_DISBURSEMENT"
+	TransactionTypeLoanRepayment    TransactionType = "LOAN_REPAYMENT"
 )
 
 type CreateMemberInput struct {

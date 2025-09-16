@@ -13,23 +13,25 @@ func (h *Handlers) logError(r *http.Request, err error) {
 }
 
 func (h *Handlers) errorResponse(w http.ResponseWriter, r *http.Request, message any) {
-	env := envelope{"error": message}
-
 	status := http.StatusInternalServerError
+	msg := "internal server error"
+
 	if apiErr, ok := message.(*services.ApiError); ok {
 		status = apiErr.Status
-		env["error"] = apiErr.Message
+		msg = apiErr.Message
+	} else if err, ok := message.(error); ok {
+		h.logError(r, err)
+	} else {
+		h.logError(r, fmt.Errorf("%v", message))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(map[string]any{
-		"message": env["error"],
+		"message": msg,
 		"status":  status,
 	}); err != nil {
 		h.logError(r, fmt.Errorf("failed to write error response: %w", err))
 		return
 	}
-
-	h.logError(r, fmt.Errorf("%v", message))
 }
