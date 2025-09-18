@@ -42,9 +42,32 @@ func (s *Server) router() {
 				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
 				r.Get("/pending", s.Handlers.ListPendingDeposits)
 
-				r.Post("/{transaction_id}/confirm", s.Handlers.ConfirmSavings)
-				r.Post("/{transaction_id}/reject", s.Handlers.RejectSavings)
 			})
+		})
+
+		r.Route("/transactions", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
+				r.Patch("/{id}/status", s.Handlers.UpdateStatus)
+			})
+		})
+
+		r.Route("/shares", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
+				r.Patch("/unit-price", s.Handlers.SetShareUnitPrice)
+				r.Get("/pending", s.Handlers.ListPendingSharesTransactions)
+				r.Get("/total", s.Handlers.GetTotalSharesPurchased)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
+				r.Get("/unit-price", s.Handlers.GetShareUnitPrice)
+				r.Get("/quotes", s.Handlers.GetShareQuote)
+				r.Post("/", s.Handlers.BuyShares)
+				r.Get("/me/total", s.Handlers.GetMemberTotalSharesPurchased)
+			})
+
 		})
 	})
 }

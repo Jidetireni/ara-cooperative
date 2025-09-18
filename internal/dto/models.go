@@ -115,3 +115,47 @@ type ListResponse[T any] struct {
 	Items      []T     `json:"items"`
 	NextCursor *string `json:"next_cursor"`
 }
+
+type UpdateTransactionStatusInput struct {
+	Confirmed *bool   `json:"confirmed"`
+	Reason    *string `json:"reason,omitempty"`
+}
+
+type TransactionStatusResult struct {
+	Confirmed *bool  `json:"confirmed"`
+	Message   string `json:"message,omitempty"`
+}
+
+type SetShareUnitPriceInput struct {
+	UnitPrice int64 `json:"unit_price" validate:"required,gt=0"`
+}
+
+type GetUnitsQuote struct {
+	Units     float64 `json:"units" validate:"required,gt=0"`
+	Remainder int64   `json:"remainder"`
+	UnitPrice int64   `json:"unit_price"`
+}
+
+type BuySharesInput struct {
+	Amount int64   `json:"amount" validate:"required,gt=0"`
+	Units  float64 `json:"units" validate:"required,gt=0"`
+}
+
+type Shares struct {
+	ID            uuid.UUID       `json:"id"`
+	TransactionID uuid.UUID       `json:"transaction_id"`
+	MemberID      uuid.UUID       `json:"member_id"`
+	Description   string          `json:"description"`
+	Reference     string          `json:"reference"`
+	Amount        int64           `json:"amount"`
+	Type          TransactionType `json:"type"`
+	Units         float64         `json:"units"`
+	UnitPrice     int64           `json:"unit_price"`
+	CreatedAt     time.Time       `json:"created_at"`
+	Status        SavingsStatus   `json:"status"`
+}
+
+type SharesTotal struct {
+	Units  float64 `json:"units"`
+	Amount int64   `json:"amount"`
+}

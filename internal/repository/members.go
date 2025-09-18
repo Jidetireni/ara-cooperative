@@ -6,14 +6,13 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 type MemberRepository struct {
 	db   *sqlx.DB
 	psql sq.StatementBuilderType
 }
-
-// TODO handle pagination and filtering very well
 
 func NewMemberRepository(db *sqlx.DB) *MemberRepository {
 	return &MemberRepository{
@@ -29,7 +28,13 @@ type MemberRepositoryFilter struct {
 	Phone  *string
 }
 
-func (mq *MemberRepository) buildQuery(filter MemberRepositoryFilter, queryType QueryType) (string, []any, error) {
+func (mq *MemberRepository) buildQuery(filter MemberRepositoryFilter, opts QueryOptions) (string, []any, error) {
+	var queryType QueryType = QueryTypeSelect
+	var err error
+	if opts.Type != nil {
+		queryType = *opts.Type
+	}
+
 	var builder sq.SelectBuilder
 	switch queryType {
 	case QueryTypeSelect:
@@ -56,11 +61,21 @@ func (mq *MemberRepository) buildQuery(filter MemberRepositoryFilter, queryType 
 		builder = builder.Where(sq.Eq{"phone": *filter.Phone})
 	}
 
+	if queryType != QueryTypeCount {
+		if opts.Sort == nil {
+			opts.Sort = lo.ToPtr("created_at:desc")
+		}
+		builder, err = ApplyPagination(builder, opts)
+		if err != nil {
+			return "", nil, err
+		}
+	}
+
 	return builder.ToSql()
 }
 
 func (mq *MemberRepository) Get(ctx context.Context, filter MemberRepositoryFilter) (*Member, error) {
-	query, args, err := mq.buildQuery(filter, QueryTypeSelect)
+	query, args, err := mq.buildQuery(filter, QueryOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +88,9 @@ func (mq *MemberRepository) Get(ctx context.Context, filter MemberRepositoryFilt
 }
 
 func (mq *MemberRepository) Exists(ctx context.Context, filter MemberRepositoryFilter) (bool, error) {
-	query, args, err := mq.buildQuery(filter, QueryTypeCount)
+	query, args, err := mq.buildQuery(filter, QueryOptions{
+		Type: lo.ToPtr(QueryTypeCount),
+	})
 	if err != nil {
 		return false, err
 	}
@@ -104,4 +121,31 @@ func (mq *MemberRepository) Create(ctx context.Context, member *Member, tx *sqlx
 
 	err = mq.db.GetContext(ctx, &createdMember, query, args...)
 	return &createdMember, err
+}
+
+func (mq *MemberRepository) List(ctx context.Context, filter MemberRepositoryFilter, opts QueryOptions) (*ListResult[Member], error) {
+	query, args, err := mq.buildQuery(filter, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	var members []*Member
+	err = mq.db.SelectContext(ctx, &members, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	listResult := ListResult[Member]{
+		Items: lo.Slice(members, 0, min(len(members), int(opts.Limit))),
+	}
+
+	if len(members) > int(opts.Limit) {
+		lastItem := lo.LastOr(members, nil)
+		if lastItem != nil {
+			nextCursor := EncodeCursor(lastItem.CreatedAt, lastItem.ID)
+			listResult.NextCursor = &nextCursor
+		}
+	}
+
+	return &listResult, nil
 }

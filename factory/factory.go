@@ -6,6 +6,8 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	"github.com/Jidetireni/ara-cooperative/internal/services/members"
 	"github.com/Jidetireni/ara-cooperative/internal/services/savings"
+	"github.com/Jidetireni/ara-cooperative/internal/services/shares"
+	"github.com/Jidetireni/ara-cooperative/internal/services/transactions"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 
 	"github.com/Jidetireni/ara-cooperative/pkg/database"
@@ -20,12 +22,15 @@ type Repositories struct {
 	Role        *repository.RoleRepository
 	Token       *repository.TokenRepository
 	Transaction *repository.TransactionRepository
+	Shares      *repository.ShareRepository
 }
 
 type Services struct {
-	Member  *members.Member
-	User    *users.User
-	Savings *savings.Saving
+	Member       *members.Member
+	User         *users.User
+	Savings      *savings.Saving
+	Transactions *transactions.Transaction
+	Shares       *shares.Shares
 }
 
 type Factory struct {
@@ -56,6 +61,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 	roleRepo := repository.NewRoleRepository(db.DB)
 	tokenRepo := repository.NewTokenRepository(db.DB)
 	transactionRepo := repository.NewTransactionRepository(db.DB)
+	shareRepo := repository.NewShareRepository(db.DB)
 
 	membersService := members.New(
 		db.DB,
@@ -82,6 +88,18 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		memberRepo,
 	)
 
+	transactionService := transactions.New(
+		db.DB,
+		transactionRepo,
+	)
+
+	sharesService := shares.New(
+		db.DB,
+		shareRepo,
+		memberRepo,
+		transactionRepo,
+	)
+
 	middleware := middleware.New(jwtToken)
 
 	return &Factory{
@@ -90,9 +108,11 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 			Router:   chi.NewRouter(),
 			Email:    email,
 			Services: &Services{
-				Member:  membersService,
-				User:    usersService,
-				Savings: savingsService,
+				Member:       membersService,
+				User:         usersService,
+				Savings:      savingsService,
+				Transactions: transactionService,
+				Shares:       sharesService,
 			},
 			Repositories: &Repositories{
 				Member:      memberRepo,
