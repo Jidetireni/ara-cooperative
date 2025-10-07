@@ -37,18 +37,13 @@ func (s *Server) router() {
 				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
 				r.Post("/", s.Handlers.DepositSavings)
 			})
-
-			r.Group(func(r chi.Router) {
-				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
-				r.Get("/pending", s.Handlers.ListPendingDeposits)
-
-			})
 		})
 
 		r.Route("/transactions", func(r chi.Router) {
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
 				r.Patch("/{id}/status", s.Handlers.UpdateStatus)
+				r.Get("/pending", s.Handlers.ListPendingTransactions)
 			})
 		})
 
@@ -56,7 +51,6 @@ func (s *Server) router() {
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
 				r.Patch("/unit-price", s.Handlers.SetShareUnitPrice)
-				r.Get("/pending", s.Handlers.ListPendingSharesTransactions)
 				r.Get("/total", s.Handlers.GetTotalSharesPurchased)
 			})
 
@@ -68,6 +62,25 @@ func (s *Server) router() {
 				r.Get("/me/total", s.Handlers.GetMemberTotalSharesPurchased)
 			})
 
+		})
+
+		r.Route("/fines", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
+				r.Post("/", s.Handlers.CreateFine)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
+				r.Post("/{id}/pay", s.Handlers.PayFine)
+			})
+		})
+
+		r.Route("/registration-fee", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
+				r.Post("/", s.Handlers.PayRegistrationFee)
+			})
 		})
 	})
 }

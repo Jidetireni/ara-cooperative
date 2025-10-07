@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sqlc-dev/pqtype"
 )
 
 type LedgerType string
@@ -104,20 +103,33 @@ func (ns NullTransactionType) Value() (driver.Value, error) {
 	return string(ns.TransactionType), nil
 }
 
+type Fine struct {
+	ID            uuid.UUID     `json:"id"`
+	AdminID       uuid.UUID     `json:"admin_id"`
+	MemberID      uuid.UUID     `json:"member_id"`
+	TransactionID uuid.NullUUID `json:"transaction_id"`
+	Amount        int64         `json:"amount"`
+	Reason        string        `json:"reason"`
+	Deadline      time.Time     `json:"deadline"`
+	PaidAt        sql.NullTime  `json:"paid_at"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     sql.NullTime  `json:"updated_at"`
+}
+
 type Member struct {
-	ID             uuid.UUID             `json:"id"`
-	UserID         uuid.UUID             `json:"user_id"`
-	Slug           string                `json:"slug"`
-	FirstName      string                `json:"first_name"`
-	LastName       string                `json:"last_name"`
-	Phone          string                `json:"phone"`
-	Address        sql.NullString        `json:"address"`
-	NextOfKinName  sql.NullString        `json:"next_of_kin_name"`
-	NextOfKinPhone sql.NullString        `json:"next_of_kin_phone"`
-	MembershipData pqtype.NullRawMessage `json:"membership_data"`
-	CreatedAt      time.Time             `json:"created_at"`
-	UpdatedAt      sql.NullTime          `json:"updated_at"`
-	DeletedAt      sql.NullTime          `json:"deleted_at"`
+	ID             uuid.UUID      `json:"id"`
+	UserID         uuid.UUID      `json:"user_id"`
+	Slug           string         `json:"slug"`
+	FirstName      string         `json:"first_name"`
+	LastName       string         `json:"last_name"`
+	Phone          string         `json:"phone"`
+	Address        sql.NullString `json:"address"`
+	NextOfKinName  sql.NullString `json:"next_of_kin_name"`
+	NextOfKinPhone sql.NullString `json:"next_of_kin_phone"`
+	ActivatedAt    sql.NullTime   `json:"activated_at"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      sql.NullTime   `json:"updated_at"`
+	DeletedAt      sql.NullTime   `json:"deleted_at"`
 }
 
 type Role struct {
