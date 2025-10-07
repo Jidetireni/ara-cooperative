@@ -28,7 +28,7 @@ type TransactionRepositoryFilter struct {
 	Confirmed  *bool
 	Rejected   *bool
 	Type       *TransactionType
-	LedgerType LedgerType
+	LedgerType *LedgerType
 }
 
 type PopTransaction struct {
@@ -72,6 +72,10 @@ func (s *TransactionRepository) applyFilter(builder sq.SelectBuilder, filter Tra
 
 	if filter.MemberID != nil {
 		builder = builder.Where(sq.Eq{"tr.member_id": *filter.MemberID})
+	}
+
+	if filter.LedgerType != nil {
+		builder = builder.Where(sq.Eq{"tr.ledger": *filter.LedgerType})
 	}
 
 	return builder

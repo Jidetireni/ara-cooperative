@@ -26,7 +26,7 @@ func (h *Handlers) SetShareUnitPrice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.factory.Services.Shares.SetUnitPrice(r.Context(), input)
+	_, err := h.factory.Services.Transactions.SetSharesUnitPrice(r.Context(), input)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
@@ -36,7 +36,7 @@ func (h *Handlers) SetShareUnitPrice(w http.ResponseWriter, r *http.Request) {
 
 // GetShareUnitPrice returns the current unit price.
 func (h *Handlers) GetShareUnitPrice(w http.ResponseWriter, r *http.Request) {
-	price := h.factory.Services.Shares.GetUnitPrice(r.Context())
+	price := h.factory.Services.Transactions.GetSharesUnitPrice(r.Context())
 	h.writeJSON(w, http.StatusOK, map[string]int64{"unit_price": price}, nil)
 }
 
@@ -51,7 +51,7 @@ func (h *Handlers) GetShareQuote(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		unitPrice := h.factory.Services.Shares.GetUnitPrice(r.Context())
+		unitPrice := h.factory.Services.Transactions.GetSharesUnitPrice(r.Context())
 		if unitPrice <= 0 {
 			h.errorResponse(w, r, &svc.ApiError{
 				Status:  http.StatusServiceUnavailable,
@@ -80,57 +80,13 @@ func (h *Handlers) BuyShares(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.factory.Services.Shares.BuyShares(r.Context(), input)
+	result, err := h.factory.Services.Transactions.BuyShares(r.Context(), input)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
 	}
 
 	h.writeJSON(w, http.StatusOK, result, nil)
-}
-
-func (h *Handlers) ListPendingSharesTransactions(w http.ResponseWriter, r *http.Request) {
-	permission := []constants.UserPermissions{constants.MemberReadALLPermission}
-	hasPermission := users.HasAdminPermissions(r.Context(), permission)
-	if !hasPermission {
-		h.errorResponse(w, r, svc.AdminForbiddenError(permission))
-		return
-	}
-
-	filters := repository.ShareRepositoryFilter{
-		Confirmed:  lo.ToPtr(false),
-		Rejected:   lo.ToPtr(false),
-		Type:       lo.ToPtr(repository.TransactionTypeDEPOSIT),
-		LedgerType: repository.LedgerTypeSHARES,
-	}
-
-	queryOptions := h.getPaginationParams(r)
-	options := repository.QueryOptions{}
-	if queryOptions != nil {
-		options = repository.QueryOptions{
-			Limit:  queryOptions.Limit,
-			Cursor: queryOptions.Cursor,
-			Sort:   queryOptions.Sort,
-		}
-	}
-
-	result, err := h.factory.Repositories.Shares.List(r.Context(), filters, options)
-	if err != nil {
-		h.errorResponse(w, r, err)
-		return
-	}
-
-	dtoItems := lo.Map(result.Items, func(item *repository.PopShare, _ int) dto.Shares {
-		if mapped := h.factory.Services.Shares.MapRepositoryToDTO(item); mapped != nil {
-			return *mapped
-		}
-		return dto.Shares{}
-	})
-
-	h.writeJSON(w, http.StatusOK, dto.ListResponse[dto.Shares]{
-		Items:      dtoItems,
-		NextCursor: result.NextCursor,
-	}, nil)
 }
 
 func (h *Handlers) GetTotalSharesPurchased(w http.ResponseWriter, r *http.Request) {
@@ -148,7 +104,7 @@ func (h *Handlers) GetTotalSharesPurchased(w http.ResponseWriter, r *http.Reques
 		LedgerType: repository.LedgerTypeSHARES,
 	}
 
-	total, err := h.factory.Repositories.Shares.CountTotalSharesPurchased(r.Context(), filters)
+	total, err := h.factory.Repositories.Share.CountTotalSharesPurchased(r.Context(), filters)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
@@ -193,7 +149,7 @@ func (h *Handlers) GetMemberTotalSharesPurchased(w http.ResponseWriter, r *http.
 		LedgerType: repository.LedgerTypeSHARES,
 	}
 
-	total, err := h.factory.Repositories.Shares.CountTotalSharesPurchased(r.Context(), filters)
+	total, err := h.factory.Repositories.Share.CountTotalSharesPurchased(r.Context(), filters)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return

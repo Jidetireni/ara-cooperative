@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
@@ -22,10 +23,11 @@ func NewMemberRepository(db *sqlx.DB) *MemberRepository {
 }
 
 type MemberRepositoryFilter struct {
-	ID     *uuid.UUID
-	UserID *uuid.UUID
-	Slug   *string
-	Phone  *string
+	ID       *uuid.UUID
+	UserID   *uuid.UUID
+	Slug     *string
+	Phone    *string
+	isActive *bool
 }
 
 func (mq *MemberRepository) buildQuery(filter MemberRepositoryFilter, opts QueryOptions) (string, []any, error) {
@@ -59,6 +61,14 @@ func (mq *MemberRepository) buildQuery(filter MemberRepositoryFilter, opts Query
 
 	if filter.Phone != nil {
 		builder = builder.Where(sq.Eq{"phone": *filter.Phone})
+	}
+
+	if filter.isActive != nil {
+		if *filter.isActive {
+			builder = builder.Where("activated_at IS NOT NULL")
+		} else {
+			builder = builder.Where("activated_at IS NULL")
+		}
 	}
 
 	if queryType != QueryTypeCount {
@@ -121,6 +131,34 @@ func (mq *MemberRepository) Create(ctx context.Context, member *Member, tx *sqlx
 
 	err = mq.db.GetContext(ctx, &createdMember, query, args...)
 	return &createdMember, err
+}
+
+func (mq *MemberRepository) Update(ctx context.Context, member *Member, tx *sqlx.Tx) (*Member, error) {
+	builder := mq.psql.Update("members").
+		Set("first_name", member.FirstName).
+		Set("last_name", member.LastName).
+		Set("phone", member.Phone).
+		Set("address", member.Address).
+		Set("next_of_kin_name", member.NextOfKinName).
+		Set("next_of_kin_phone", member.NextOfKinPhone).
+		Set("activated_at", member.ActivatedAt).
+		Set("updated_at", time.Now()).
+		Where(sq.Eq{"id": member.ID}).
+		Suffix("RETURNING *")
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	var updatedMember Member
+	if tx != nil {
+		err = tx.GetContext(ctx, &updatedMember, query, args...)
+		return &updatedMember, err
+	}
+
+	err = mq.db.GetContext(ctx, &updatedMember, query, args...)
+	return &updatedMember, err
 }
 
 func (mq *MemberRepository) List(ctx context.Context, filter MemberRepositoryFilter, opts QueryOptions) (*ListResult[Member], error) {

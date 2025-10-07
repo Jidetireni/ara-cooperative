@@ -117,8 +117,9 @@ type ListResponse[T any] struct {
 }
 
 type UpdateTransactionStatusInput struct {
-	Confirmed *bool   `json:"confirmed"`
-	Reason    *string `json:"reason,omitempty"`
+	Confirmed  *bool   `json:"confirmed"`
+	Reason     *string `json:"reason,omitempty"`
+	LedgerType *string `json:"ledger_type,omitempty"`
 }
 
 type TransactionStatusResult struct {
@@ -158,4 +159,44 @@ type Shares struct {
 type SharesTotal struct {
 	Units  float64 `json:"units"`
 	Amount int64   `json:"amount"`
+}
+
+type TransactionsInput struct {
+	Amount      int64  `json:"amount" validate:"required,gt=0"`
+	Description string `json:"description" validate:"required"`
+}
+
+type Transactions struct {
+	ID          uuid.UUID       `json:"id"`
+	MemberID    uuid.UUID       `json:"member_id"`
+	Amount      int64           `json:"amount"`
+	Description string          `json:"description"`
+	Type        TransactionType `json:"type"`
+	Reference   string          `json:"reference"`
+	Status      SavingsStatus   `json:"status"`
+	CreatedAt   time.Time       `json:"created_at"`
+}
+
+type FineInput struct {
+	Amount   int64     `json:"amount" validate:"required,gt=0"`
+	MemberID uuid.UUID `json:"member_id" validate:"required"`
+	Reason   string    `json:"description" validate:"required"`
+	Deadline string    `json:"deadline" validate:"required"`
+}
+
+type Fine struct {
+	ID            uuid.UUID `json:"id"`
+	MemberID      uuid.UUID `json:"member_id"`
+	Amount        int64     `json:"amount"`
+	TransactionID uuid.UUID `json:"transaction_id"`
+	Reason        string    `json:"reason"`
+	Deadline      time.Time `json:"deadline"`
+	Paid          bool      `json:"paid"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+type TransactionFilters struct {
+	MemberSlug *string `json:"member_slug,omitempty"`
+	LegderType *string `json:"ledger_type,omitempty"`
+	Type       *string `json:"type,omitempty"`
 }

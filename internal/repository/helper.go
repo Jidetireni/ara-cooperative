@@ -143,3 +143,11 @@ type ListResult[T any] struct {
 	Items      []*T
 	NextCursor *string
 }
+
+func ToNullUUID(id uuid.UUID) uuid.NullUUID {
+	if id == uuid.Nil {
+		return uuid.NullUUID{UUID: uuid.Nil, Valid: false}
+	}
+
+	return uuid.NullUUID{UUID: id, Valid: true}
+}

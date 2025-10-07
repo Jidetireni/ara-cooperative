@@ -5,8 +5,6 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/middleware"
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	"github.com/Jidetireni/ara-cooperative/internal/services/members"
-	"github.com/Jidetireni/ara-cooperative/internal/services/savings"
-	"github.com/Jidetireni/ara-cooperative/internal/services/shares"
 	"github.com/Jidetireni/ara-cooperative/internal/services/transactions"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 
@@ -22,15 +20,14 @@ type Repositories struct {
 	Role        *repository.RoleRepository
 	Token       *repository.TokenRepository
 	Transaction *repository.TransactionRepository
-	Shares      *repository.ShareRepository
+	Share       *repository.ShareRepository
+	Fine        *repository.FineRepository
 }
 
 type Services struct {
 	Member       *members.Member
 	User         *users.User
-	Savings      *savings.Saving
 	Transactions *transactions.Transaction
-	Shares       *shares.Shares
 }
 
 type Factory struct {
@@ -62,6 +59,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 	tokenRepo := repository.NewTokenRepository(db.DB)
 	transactionRepo := repository.NewTransactionRepository(db.DB)
 	shareRepo := repository.NewShareRepository(db.DB)
+	fineRepo := repository.NewFineRepository(db.DB)
 
 	membersService := members.New(
 		db.DB,
@@ -82,22 +80,12 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		tokenRepo,
 	)
 
-	savingsService := savings.New(
-		db.DB,
-		transactionRepo,
-		memberRepo,
-	)
-
 	transactionService := transactions.New(
 		db.DB,
 		transactionRepo,
-	)
-
-	sharesService := shares.New(
-		db.DB,
-		shareRepo,
 		memberRepo,
-		transactionRepo,
+		shareRepo,
+		fineRepo,
 	)
 
 	middleware := middleware.New(jwtToken)
@@ -110,9 +98,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 			Services: &Services{
 				Member:       membersService,
 				User:         usersService,
-				Savings:      savingsService,
 				Transactions: transactionService,
-				Shares:       sharesService,
 			},
 			Repositories: &Repositories{
 				Member:      memberRepo,
@@ -120,6 +106,8 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 				Role:        roleRepo,
 				Token:       tokenRepo,
 				Transaction: transactionRepo,
+				Share:       shareRepo,
+				Fine:        fineRepo,
 			},
 			Middleware: middleware,
 		}, func() {
