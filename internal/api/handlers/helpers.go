@@ -59,7 +59,7 @@ func (h *Handlers) getTransactionfiltersQuery(r *http.Request) *dto.TransactionF
 	filters := dto.TransactionFilters{}
 
 	if v := r.URL.Query().Get("ledger_type"); v != "" {
-		filters.LegderType = &v
+		filters.LedgerType = &v
 	}
 
 	if v := r.URL.Query().Get("type"); v != "" {

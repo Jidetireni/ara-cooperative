@@ -40,6 +40,7 @@ type Member struct {
 	Address        string    `json:"address"`
 	NextOfKinName  string    `json:"next_of_kin_name"`
 	NextOfKinPhone string    `json:"next_of_kin_phone"`
+	IsActive       bool      `json:"is_active"`
 }
 
 type User struct {
@@ -119,7 +120,7 @@ type ListResponse[T any] struct {
 type UpdateTransactionStatusInput struct {
 	Confirmed  *bool   `json:"confirmed"`
 	Reason     *string `json:"reason,omitempty"`
-	LedgerType *string `json:"ledger_type,omitempty"`
+	LedgerType string  `json:"ledger_type"`
 }
 
 type TransactionStatusResult struct {
@@ -139,7 +140,7 @@ type GetUnitsQuote struct {
 
 type BuySharesInput struct {
 	Amount int64   `json:"amount" validate:"required,gt=0"`
-	Units  float64 `json:"units" validate:"required,gt=0"`
+	Units  float64 `json:"units,omitempty" validate:"gte=0"`
 }
 
 type Shares struct {
@@ -197,6 +198,6 @@ type Fine struct {
 
 type TransactionFilters struct {
 	MemberSlug *string `json:"member_slug,omitempty"`
-	LegderType *string `json:"ledger_type,omitempty"`
+	LedgerType *string `json:"ledger_type,omitempty"`
 	Type       *string `json:"type,omitempty"`
 }

@@ -45,9 +45,7 @@ type ShareRepository interface {
 type FineRepository interface {
 	Create(ctx context.Context, fine *repository.Fine, tx *sqlx.Tx) (*repository.Fine, error)
 	Get(ctx context.Context, filter repository.FineRepositoryFilter) (*repository.Fine, error)
-	List(ctx context.Context, filter repository.FineRepositoryFilter, opts repository.QueryOptions) (*repository.ListResult[repository.Fine], error)
 	Update(ctx context.Context, fine *repository.Fine, tx *sqlx.Tx) (*repository.Fine, error)
-	Delete(ctx context.Context, id *uuid.UUID, tx *sqlx.Tx) error
 }
 
 type Transaction struct {

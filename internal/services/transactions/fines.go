@@ -96,6 +96,13 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 		return nil, err
 	}
 
+	if fine.PaidAt.Valid {
+		return nil, &svc.ApiError{
+			Status:  http.StatusBadRequest,
+			Message: "fine already paid",
+		}
+	}
+
 	if fine.Amount != txInput.Amount {
 		return nil, &svc.ApiError{
 			Status:  http.StatusBadRequest,

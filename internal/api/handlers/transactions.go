@@ -36,7 +36,12 @@ func (h *Handlers) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.factory.Services.Transactions.UpdateStatus(r.Context(), &transactionID, &input, repository.LedgerType(*input.LedgerType))
+	result, err := h.factory.Services.Transactions.UpdateStatus(
+		r.Context(),
+		&transactionID,
+		&input,
+		repository.LedgerType(input.LedgerType),
+	)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
@@ -58,8 +63,8 @@ func (h *Handlers) ListPendingTransactions(w http.ResponseWriter, r *http.Reques
 	repoFilters.Confirmed = lo.ToPtr(false)
 	repoFilters.Rejected = lo.ToPtr(false)
 
-	if filters.LegderType != nil {
-		repoFilters.LedgerType = lo.ToPtr(repository.LedgerType(*filters.LegderType))
+	if filters.LedgerType != nil {
+		repoFilters.LedgerType = lo.ToPtr(repository.LedgerType(*filters.LedgerType))
 	}
 	if filters.Type != nil {
 		repoFilters.Type = lo.ToPtr(repository.TransactionType(*filters.Type))

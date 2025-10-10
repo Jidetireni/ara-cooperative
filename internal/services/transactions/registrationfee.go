@@ -3,33 +3,79 @@ package transactions
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
+	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
+	"github.com/google/uuid"
 )
 
 func (t *Transaction) ChargeRegistrationFee(ctx context.Context, input *dto.TransactionsInput) (*dto.Transactions, error) {
-	transaction, err := t.CreateTransaction(ctx, TransactionParams{
-		Input:      *input,
-		Type:       repository.TransactionTypeDEPOSIT,
-		LedgerType: repository.LedgerTypeREGISTRATIONFEE,
-	})
-	if err != nil {
-		return nil, err
+	user := users.FromContext(ctx)
+	if user.ID == uuid.Nil {
+		return nil, &svc.ApiError{
+			Status:  http.StatusUnauthorized,
+			Message: "unauthenticated",
+		}
 	}
 
-	user := users.FromContext(ctx)
 	member, err := t.getMemberByUserID(ctx, user.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	member.ActivatedAt = sql.NullTime{Time: transaction.CreatedAt, Valid: true}
-	_, err = t.MemberRepo.Update(ctx, member, nil)
+	if member.ActivatedAt.Valid {
+		return nil, &svc.ApiError{
+			Status:  http.StatusBadRequest,
+			Message: "member already activated",
+		}
+	}
+
+	tx, err := t.DB.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	transaction, status, err := t.createTransactionWithStatus(
+		ctx,
+		member.ID,
+		TransactionParams{
+			Input:      *input,
+			Type:       repository.TransactionTypeDEPOSIT,
+			LedgerType: repository.LedgerTypeREGISTRATIONFEE,
+		},
+		tx,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	return transaction, nil
+	if !transaction.CreatedAt.Valid {
+		return nil, fmt.Errorf("transaction failed")
+	}
+
+	member.ActivatedAt = sql.NullTime{Time: time.Now(), Valid: true}
+	_, err = t.MemberRepo.Update(ctx, member, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	return t.MapPopTransactionToDTO(&repository.PopTransaction{
+		ID:          transaction.ID,
+		MemberID:    transaction.MemberID,
+		Description: transaction.Description,
+		Reference:   transaction.Reference,
+		Amount:      transaction.Amount,
+		Type:        transaction.Type,
+		CreatedAt:   transaction.CreatedAt,
+		ConfirmedAt: status.ConfirmedAt,
+		RejectedAt:  status.RejectedAt,
+	}), nil
 }

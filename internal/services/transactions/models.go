@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-var SharesUnitPrice int64 = 50000
+const DefaultSharesUnitPrice int64 = 50000
 
 // TransactionParams contains parameters for creating transactions
 type TransactionParams struct {

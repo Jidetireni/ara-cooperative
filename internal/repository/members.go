@@ -27,7 +27,7 @@ type MemberRepositoryFilter struct {
 	UserID   *uuid.UUID
 	Slug     *string
 	Phone    *string
-	isActive *bool
+	IsActive *bool
 }
 
 func (mq *MemberRepository) buildQuery(filter MemberRepositoryFilter, opts QueryOptions) (string, []any, error) {
@@ -63,8 +63,8 @@ func (mq *MemberRepository) buildQuery(filter MemberRepositoryFilter, opts Query
 		builder = builder.Where(sq.Eq{"phone": *filter.Phone})
 	}
 
-	if filter.isActive != nil {
-		if *filter.isActive {
+	if filter.IsActive != nil {
+		if *filter.IsActive {
 			builder = builder.Where("activated_at IS NOT NULL")
 		} else {
 			builder = builder.Where("activated_at IS NULL")

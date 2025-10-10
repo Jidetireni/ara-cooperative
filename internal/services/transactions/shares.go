@@ -23,11 +23,7 @@ func (t *Transaction) SetSharesUnitPrice(ctx context.Context, input dto.SetShare
 	}
 
 	t.mu.Lock()
-	if t.unitPrice == 0 {
-		t.unitPrice = SharesUnitPrice
-	}
 	t.unitPrice = input.UnitPrice
-	SharesUnitPrice = input.UnitPrice
 	t.mu.Unlock()
 	return "Share unit price updated successfully", nil
 }
@@ -37,7 +33,7 @@ func (t *Transaction) GetSharesUnitPrice(ctx context.Context) int64 {
 	defer t.mu.RUnlock()
 	unitPrice := t.unitPrice
 	if unitPrice == 0 {
-		unitPrice = SharesUnitPrice
+		unitPrice = DefaultSharesUnitPrice
 	}
 	return unitPrice
 }
@@ -84,7 +80,7 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 
 	tx, err := t.DB.BeginTxx(ctx, nil)
 	if err != nil {
-		return &dto.Shares{}, err
+		return nil, err
 	}
 	defer func() {
 		_ = tx.Rollback()

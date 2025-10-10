@@ -71,9 +71,9 @@ func (f *FineRepository) buildQuery(filter FineRepositoryFilter, opts QueryOptio
 	}
 
 	if filter.TransactionID != nil {
-		builder = builder.
-			Where(sq.Eq{"f.transaction_id": *filter.TransactionID}).
-			Join("transactions tr ON f.transaction_id = tr.id")
+		builder = builder.Where(sq.Eq{"f.transaction_id": *filter.TransactionID})
+	} else {
+		builder = builder.Join("transactions tr ON f.transaction_id = tr.id")
 	}
 
 	if filter.Paid != nil {
@@ -189,7 +189,7 @@ func (f *FineRepository) Update(ctx context.Context, fine *Fine, tx *sqlx.Tx) (*
 }
 
 // Delete removes a fine by ID.
-func (f *FineRepository) Delete(ctx context.Context, id *uuid.UUID, tx *sqlx.Tx) error {
+func (f *FineRepository) Delete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) error {
 	builder := f.psql.Delete("fines").
 		Where(sq.Eq{"id": id})
 

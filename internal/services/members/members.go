@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -228,7 +229,33 @@ func (m *Member) GetBySlug(ctx context.Context, slug string) (*dto.Member, error
 	return m.mapRepositoryToHandler(member), nil
 }
 
+func (m *Member) IsMemberActive(ctx context.Context, memberID uuid.UUID) (bool, error) {
+	member, err := m.MemberRepository.Get(ctx, repository.MemberRepositoryFilter{
+		ID: &memberID,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, &svc.ApiError{
+				Status:  http.StatusNotFound,
+				Message: "member not found",
+			}
+		}
+		return false, err
+	}
+
+	isActive := false
+	if member.ActivatedAt.Valid {
+		isActive = true
+	}
+
+	return isActive, nil
+}
+
 func (m *Member) mapRepositoryToHandler(member *repository.Member) *dto.Member {
+	isActive := false
+	if member.ActivatedAt.Valid {
+		isActive = true
+	}
 	return &dto.Member{
 		ID:             member.ID,
 		FirstName:      member.FirstName,
@@ -237,5 +264,6 @@ func (m *Member) mapRepositoryToHandler(member *repository.Member) *dto.Member {
 		Address:        member.Address.String,
 		NextOfKinName:  member.NextOfKinName.String,
 		NextOfKinPhone: member.NextOfKinPhone.String,
+		IsActive:       isActive,
 	}
 }

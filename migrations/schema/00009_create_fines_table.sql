@@ -14,6 +14,7 @@ CREATE TABLE fines (
 
 CREATE INDEX idx_fines_member_id ON fines(member_id);
 CREATE INDEX idx_fines_admin_id ON fines(admin_id);
+CREATE INDEX idx_fines_transaction_id ON fines(transaction_id); 
 
 -- +goose Down
 DROP INDEX IF EXISTS idx_fines_member_id;
