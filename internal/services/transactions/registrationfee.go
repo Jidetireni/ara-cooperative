@@ -2,10 +2,8 @@ package transactions
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
@@ -61,9 +59,7 @@ func (t *Transaction) ChargeRegistrationFee(ctx context.Context, input *dto.Tran
 		return nil, fmt.Errorf("transaction failed")
 	}
 
-	member.ActivatedAt = sql.NullTime{Time: time.Now(), Valid: true}
-	_, err = t.MemberRepo.Update(ctx, member, tx)
-	if err != nil {
+	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 

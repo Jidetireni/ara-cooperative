@@ -70,16 +70,17 @@ func New(db *sqlx.DB, transRepo TransactionRepository, memberRepo MemberReposito
 	}
 }
 
-func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dto.UpdateTransactionStatusInput, legder repository.LedgerType) (*dto.TransactionStatusResult, error) {
+func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dto.UpdateTransactionStatusInput) (*dto.TransactionStatusResult, error) {
+	ledger := repository.LedgerType(input.LedgerType)
 	status, err := t.TransactionRepo.GetStatus(ctx, repository.TransactionRepositoryFilter{
 		ID:         id,
-		LedgerType: lo.ToPtr(legder),
+		LedgerType: lo.ToPtr(ledger),
 	})
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, &svc.ApiError{
 				Status:  http.StatusNotFound,
-				Message: "savings transaction not found",
+				Message: "transaction not found",
 			}
 		}
 		return nil, err
@@ -131,7 +132,15 @@ func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dt
 		updateStatus.RejectedAt = sql.NullTime{Time: time.Now(), Valid: true}
 	}
 
-	updatedStatus, err := t.TransactionRepo.UpdateStatus(ctx, updateStatus, nil)
+	tx, err := t.DB.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	updatedStatus, err := t.TransactionRepo.UpdateStatus(ctx, updateStatus, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +150,19 @@ func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dt
 	}
 	if wantConfirmed {
 		result.Message = "transaction confirmed successfully"
+		if ledger == repository.LedgerTypeREGISTRATIONFEE {
+			member, err := t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{
+				ID: lo.ToPtr(updatedStatus.TransactionID),
+			})
+			if err != nil {
+				return nil, err
+			}
+			member.ActivatedAt = sql.NullTime{Time: time.Now(), Valid: true}
+			_, err = t.MemberRepo.Update(ctx, member, tx)
+			if err != nil {
+				return nil, err
+			}
+		}
 	} else {
 		result.Message = "transaction rejected successfully"
 	}
@@ -168,7 +190,9 @@ func (t *Transaction) CreateTransaction(ctx context.Context, params TransactionP
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	transaction, status, err := t.createTransactionWithStatus(ctx, member.ID, params, tx)
 	if err != nil {

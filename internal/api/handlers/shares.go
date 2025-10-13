@@ -60,16 +60,22 @@ func (h *Handlers) GetShareQuote(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// fractional quote (4 d.p.)
-		unitsFloat := float64(amount) / float64(unitPrice)
-		unitsFloat = float64(int64(unitsFloat*1e4+0.5)) / 1e4
-		remainder := amount % unitPrice
+		scaledUnit := (amount * 1e4) / unitPrice
+		unitsFloat := float64(scaledUnit) / 1e4
+		spent := (scaledUnit * unitPrice) / 1e4
+		remainder := amount - spent
 
 		h.writeJSON(w, http.StatusOK, dto.GetUnitsQuote{
 			Units:     unitsFloat,
 			Remainder: remainder,
 			UnitPrice: unitPrice,
 		}, nil)
+		return
+	} else {
+		h.errorResponse(w, r, &svc.ApiError{
+			Status:  http.StatusBadRequest,
+			Message: "amount query parameter is required",
+		})
 		return
 	}
 }

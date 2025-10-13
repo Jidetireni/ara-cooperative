@@ -181,19 +181,19 @@ type Transactions struct {
 type FineInput struct {
 	Amount   int64     `json:"amount" validate:"required,gt=0"`
 	MemberID uuid.UUID `json:"member_id" validate:"required"`
-	Reason   string    `json:"description" validate:"required"`
+	Reason   string    `json:"reason" validate:"required"`
 	Deadline string    `json:"deadline" validate:"required"`
 }
 
 type Fine struct {
-	ID            uuid.UUID `json:"id"`
-	MemberID      uuid.UUID `json:"member_id"`
-	Amount        int64     `json:"amount"`
-	TransactionID uuid.UUID `json:"transaction_id"`
-	Reason        string    `json:"reason"`
-	Deadline      time.Time `json:"deadline"`
-	Paid          bool      `json:"paid"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID            uuid.UUID  `json:"id"`
+	MemberID      uuid.UUID  `json:"member_id"`
+	Amount        int64      `json:"amount"`
+	TransactionID *uuid.UUID `json:"transaction_id,omitempty"`
+	Reason        string     `json:"reason"`
+	Deadline      time.Time  `json:"deadline"`
+	Paid          bool       `json:"paid"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
 
 type TransactionFilters struct {

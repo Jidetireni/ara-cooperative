@@ -72,8 +72,6 @@ func (f *FineRepository) buildQuery(filter FineRepositoryFilter, opts QueryOptio
 
 	if filter.TransactionID != nil {
 		builder = builder.Where(sq.Eq{"f.transaction_id": *filter.TransactionID})
-	} else {
-		builder = builder.Join("transactions tr ON f.transaction_id = tr.id")
 	}
 
 	if filter.Paid != nil {

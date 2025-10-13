@@ -40,7 +40,6 @@ func (h *Handlers) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		&transactionID,
 		&input,
-		repository.LedgerType(input.LedgerType),
 	)
 	if err != nil {
 		h.errorResponse(w, r, err)
@@ -58,7 +57,7 @@ func (h *Handlers) ListPendingTransactions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	filters := h.getTransactionfiltersQuery(r)
+	filters := h.getTransactionFiltersQuery(r)
 	repoFilters := repository.TransactionRepositoryFilter{}
 	repoFilters.Confirmed = lo.ToPtr(false)
 	repoFilters.Rejected = lo.ToPtr(false)

@@ -114,7 +114,7 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 		return nil, err
 	}
 
-	return t.MapPopShareToDTO(&repository.PopShare{
+	share, err := t.MapPopShareToDTO(&repository.PopShare{
 		ID:            shares.ID,
 		TransactionID: shares.TransactionID,
 		MemberID:      transaction.MemberID,
@@ -127,13 +127,18 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 		CreatedAt:     shares.CreatedAt,
 		ConfirmedAt:   status.ConfirmedAt,
 		RejectedAt:    status.RejectedAt,
-	}), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return share, nil
 }
 
-func (t *Transaction) MapPopShareToDTO(share *repository.PopShare) *dto.Shares {
+func (t *Transaction) MapPopShareToDTO(share *repository.PopShare) (*dto.Shares, error) {
 	units, err := strconv.ParseFloat(share.Units, 64)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("invalid share units: %w", err)
 	}
 
 	status := dto.SavingsStatusPending
@@ -154,5 +159,5 @@ func (t *Transaction) MapPopShareToDTO(share *repository.PopShare) *dto.Shares {
 		UnitPrice:     share.UnitPrice,
 		CreatedAt:     share.CreatedAt,
 		Status:        status,
-	}
+	}, nil
 }

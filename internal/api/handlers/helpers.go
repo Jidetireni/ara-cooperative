@@ -55,7 +55,7 @@ func (h *Handlers) getPaginationParams(r *http.Request) *dto.QueryOptions {
 	return &q
 }
 
-func (h *Handlers) getTransactionfiltersQuery(r *http.Request) *dto.TransactionFilters {
+func (h *Handlers) getTransactionFiltersQuery(r *http.Request) *dto.TransactionFilters {
 	filters := dto.TransactionFilters{}
 
 	if v := r.URL.Query().Get("ledger_type"); v != "" {
@@ -64,6 +64,10 @@ func (h *Handlers) getTransactionfiltersQuery(r *http.Request) *dto.TransactionF
 
 	if v := r.URL.Query().Get("type"); v != "" {
 		filters.Type = &v
+	}
+
+	if v := r.URL.Query().Get("memeber_slug"); v != "" {
+		filters.MemberSlug = &v
 	}
 
 	return &filters

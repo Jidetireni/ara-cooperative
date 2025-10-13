@@ -38,6 +38,7 @@ func (h *Handlers) PayFine(w http.ResponseWriter, r *http.Request) {
 			Status:  http.StatusBadRequest,
 			Message: fmt.Sprintf("invalid fine ID: %v", err),
 		})
+		return
 	}
 
 	fine, err := h.factory.Services.Transactions.PayFine(r.Context(), fineID, &input)
@@ -46,5 +47,5 @@ func (h *Handlers) PayFine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusCreated, fine, nil)
+	h.writeJSON(w, http.StatusOK, fine, nil)
 }

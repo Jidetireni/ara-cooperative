@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/Jidetireni/ara-cooperative/cmd/seed/seed"
 	"github.com/Jidetireni/ara-cooperative/internal/config"
@@ -21,12 +22,16 @@ func main() {
 
 	// Reset database first
 	if err := seeder.ResetDB(); err != nil {
-		log.Fatalf("Failed to reset database: %v", err)
+		log.Printf("Failed to reset database: %v", err)
+		cleanup()
+		os.Exit(1)
 	}
 
 	// Seed all data
 	if err := seeder.SeedAll(); err != nil {
-		log.Fatalf("Failed to seed database: %v", err)
+		log.Printf("Failed to seed database: %v", err)
+		cleanup()
+		os.Exit(1)
 	}
 
 	log.Println("Database seeding completed successfully!")
