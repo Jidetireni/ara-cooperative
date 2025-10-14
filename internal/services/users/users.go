@@ -142,7 +142,7 @@ func (u *User) SetPassword(ctx context.Context, w http.ResponseWriter, input *dt
 		return nil, err
 	}
 
-	_, err = u.generateTokenAndSave(ctx, w, upsertUser, tx)
+	tokenPairs, err := u.generateTokenAndSave(ctx, w, upsertUser, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -156,8 +156,8 @@ func (u *User) SetPassword(ctx context.Context, w http.ResponseWriter, input *dt
 			ID:    upsertUser.ID,
 			Email: upsertUser.Email,
 		},
-		AccessToken:  "",
-		RefreshToken: "",
+		AccessToken:  tokenPairs.AccessToken,
+		RefreshToken: tokenPairs.RefreshToken,
 	}, nil
 }
 
@@ -189,7 +189,7 @@ func (u *User) Login(ctx context.Context, w http.ResponseWriter, input *dto.Logi
 	}
 	defer tx.Rollback()
 
-	_, err = u.generateTokenAndSave(ctx, w, user, tx)
+	tokenPairs, err := u.generateTokenAndSave(ctx, w, user, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -204,8 +204,8 @@ func (u *User) Login(ctx context.Context, w http.ResponseWriter, input *dto.Logi
 			ID:    user.ID,
 			Email: user.Email,
 		},
-		AccessToken:  "",
-		RefreshToken: "",
+		AccessToken:  tokenPairs.AccessToken,
+		RefreshToken: tokenPairs.RefreshToken,
 	}, nil
 }
 

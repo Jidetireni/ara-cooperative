@@ -8,7 +8,7 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/services/transactions"
 )
 
-func (h *Handlers) DepositSavings(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) SpecialDeposit(w http.ResponseWriter, r *http.Request) {
 	var input dto.TransactionsInput
 	if !h.decodeAndValidate(w, r, &input) {
 		return
@@ -19,7 +19,7 @@ func (h *Handlers) DepositSavings(w http.ResponseWriter, r *http.Request) {
 		transactions.TransactionParams{
 			Input:      input,
 			Type:       repository.TransactionTypeDEPOSIT,
-			LedgerType: repository.LedgerTypeSAVINGS,
+			LedgerType: repository.LedgerTypeSPECIALDEPOSIT,
 		},
 	)
 	if err != nil {
@@ -30,10 +30,10 @@ func (h *Handlers) DepositSavings(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusCreated, saving, nil)
 }
 
-func (h *Handlers) SavingsBalance(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) SpecialDepositBalance(w http.ResponseWriter, r *http.Request) {
 	balance, err := h.factory.Services.Transactions.GetBalance(
 		r.Context(),
-		repository.LedgerTypeSAVINGS,
+		repository.LedgerTypeSPECIALDEPOSIT,
 	)
 	if err != nil {
 		h.errorResponse(w, r, err)

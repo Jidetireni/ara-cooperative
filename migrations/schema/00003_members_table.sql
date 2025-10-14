@@ -9,7 +9,8 @@ CREATE TABLE members (
     address TEXT,
     next_of_kin_name VARCHAR(255),
     next_of_kin_phone VARCHAR(20),
-    membership_data JSONB,
+    -- is_active BOOLEAN NOT NULL DEFAULT FALSE,
+    activated_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ,
     deleted_at TIMESTAMPTZ

@@ -36,14 +36,59 @@ func (s *Server) router() {
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
 				r.Post("/", s.Handlers.DepositSavings)
+				r.Get("/me", s.Handlers.SavingsBalance)
+			})
+		})
+
+		r.Route("/special-deposit", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
+				r.Post("/", s.Handlers.SpecialDeposit)
+				r.Get("/me", s.Handlers.SpecialDepositBalance)
+			})
+		})
+
+		r.Route("/transactions", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
+				r.Patch("/status/{status_id}", s.Handlers.UpdateStatus)
+				r.Get("/pending", s.Handlers.ListPendingTransactions)
+			})
+		})
+
+		r.Route("/shares", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
+				r.Patch("/unit-price", s.Handlers.SetShareUnitPrice)
+				r.Get("/total", s.Handlers.GetTotalSharesPurchased)
 			})
 
 			r.Group(func(r chi.Router) {
-				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
-				r.Get("/pending", s.Handlers.ListPendingDeposits)
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
+				r.Get("/unit-price", s.Handlers.GetShareUnitPrice)
+				r.Get("/quotes", s.Handlers.GetShareQuote)
+				r.Post("/", s.Handlers.BuyShares)
+				r.Get("/me/total", s.Handlers.GetMemberTotalSharesPurchased)
+			})
 
-				r.Post("/{transaction_id}/confirm", s.Handlers.ConfirmSavings)
-				r.Post("/{transaction_id}/reject", s.Handlers.RejectSavings)
+		})
+
+		r.Route("/fines", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
+				r.Post("/", s.Handlers.CreateFine)
+			})
+
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
+				r.Post("/{id}/pay", s.Handlers.PayFine)
+			})
+		})
+
+		r.Route("/registration-fee", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
+				r.Post("/", s.Handlers.PayRegistrationFee)
 			})
 		})
 	})
