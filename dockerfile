@@ -1,4 +1,4 @@
-FROM golang:1.24.2-alpine AS builder
+FROM golang:1.25.2-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git
@@ -18,7 +18,7 @@ RUN go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 COPY . .
 
 # Final stage
-FROM golang:1.24.2-alpine
+FROM golang:1.25.2-alpine
 
 WORKDIR /app
 

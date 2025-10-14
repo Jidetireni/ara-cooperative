@@ -63,15 +63,5 @@ func (t *Transaction) ChargeRegistrationFee(ctx context.Context, input *dto.Tran
 		return nil, err
 	}
 
-	return t.MapPopTransactionToDTO(&repository.PopTransaction{
-		ID:          transaction.ID,
-		MemberID:    transaction.MemberID,
-		Description: transaction.Description,
-		Reference:   transaction.Reference,
-		Amount:      transaction.Amount,
-		Type:        transaction.Type,
-		CreatedAt:   transaction.CreatedAt,
-		ConfirmedAt: status.ConfirmedAt,
-		RejectedAt:  status.RejectedAt,
-	}), nil
+	return t.MapRepositoryToDTO(transaction, status), nil
 }

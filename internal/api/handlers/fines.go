@@ -34,7 +34,7 @@ func (h *Handlers) PayFine(w http.ResponseWriter, r *http.Request) {
 	IDStr := chi.URLParam(r, "id")
 	fineID, err := uuid.Parse(IDStr)
 	if err != nil {
-		h.errorResponse(w, r, svc.ApiError{
+		h.errorResponse(w, r, &svc.ApiError{
 			Status:  http.StatusBadRequest,
 			Message: fmt.Sprintf("invalid fine ID: %v", err),
 		})

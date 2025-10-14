@@ -36,13 +36,22 @@ func (s *Server) router() {
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
 				r.Post("/", s.Handlers.DepositSavings)
+				r.Get("/me", s.Handlers.SavingsBalance)
+			})
+		})
+
+		r.Route("/special-deposit", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeMember))
+				r.Post("/", s.Handlers.SpecialDeposit)
+				r.Get("/me", s.Handlers.SpecialDepositBalance)
 			})
 		})
 
 		r.Route("/transactions", func(r chi.Router) {
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth(token.JWTTypeAdmin))
-				r.Patch("/{id}/status", s.Handlers.UpdateStatus)
+				r.Patch("/status/{status_id}", s.Handlers.UpdateStatus)
 				r.Get("/pending", s.Handlers.ListPendingTransactions)
 			})
 		})

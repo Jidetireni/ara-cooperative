@@ -21,12 +21,12 @@ func (h *Handlers) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	transactionIDStr := chi.URLParam(r, "id")
-	transactionID, err := uuid.Parse(transactionIDStr)
+	statusIDStr := chi.URLParam(r, "status_id")
+	statusID, err := uuid.Parse(statusIDStr)
 	if err != nil {
 		h.errorResponse(w, r, &svc.ApiError{
 			Status:  http.StatusBadRequest,
-			Message: "Invalid transaction ID",
+			Message: "Invalid status ID",
 		})
 		return
 	}
@@ -38,7 +38,7 @@ func (h *Handlers) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.factory.Services.Transactions.UpdateStatus(
 		r.Context(),
-		&transactionID,
+		&statusID,
 		&input,
 	)
 	if err != nil {

@@ -66,9 +66,5 @@ func (h *Handlers) getTransactionFiltersQuery(r *http.Request) *dto.TransactionF
 		filters.Type = &v
 	}
 
-	if v := r.URL.Query().Get("memeber_slug"); v != "" {
-		filters.MemberSlug = &v
-	}
-
 	return &filters
 }

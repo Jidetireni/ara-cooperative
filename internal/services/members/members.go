@@ -171,12 +171,8 @@ func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.M
 		return &dto.Member{}, err
 	}
 
-	tokenUUID, err := uuid.NewRandom()
-	if err != nil {
-		return nil, err
-	}
-	tokenID := base64.URLEncoding.EncodeToString(tokenUUID[:])
-
+	tokenStr := lo.RandomString(12, lo.AlphanumericCharset)
+	tokenID := base64.URLEncoding.EncodeToString([]byte(tokenStr))
 	expiresAt := time.Now().Add(15 * time.Minute)
 	_, err = m.TokenRepo.Create(ctx, &repository.Token{
 		UserID:    user.ID,

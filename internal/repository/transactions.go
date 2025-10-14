@@ -25,6 +25,7 @@ func NewTransactionRepository(db *sqlx.DB) *TransactionRepository {
 type TransactionRepositoryFilter struct {
 	ID         *uuid.UUID
 	MemberID   *uuid.UUID
+	StatusID   *uuid.UUID
 	Confirmed  *bool
 	Rejected   *bool
 	Type       *TransactionType
@@ -38,10 +39,11 @@ type PopTransaction struct {
 	Reference   string          `json:"reference"`
 	Amount      int64           `json:"amount"`
 	Type        TransactionType `json:"type"`
+	LedgerType  LedgerType      `json:"ledger_type"`
 	CreatedAt   sql.NullTime    `json:"created_at"`
-
-	ConfirmedAt sql.NullTime `json:"confirmed_at"`
-	RejectedAt  sql.NullTime `json:"rejected_at"`
+	StatusID    uuid.UUID       `json:"status_id"`
+	ConfirmedAt sql.NullTime    `json:"confirmed_at"`
+	RejectedAt  sql.NullTime    `json:"rejected_at"`
 }
 
 func (s *TransactionRepository) applyFilter(builder sq.SelectBuilder, filter TransactionRepositoryFilter) sq.SelectBuilder {
@@ -64,6 +66,10 @@ func (s *TransactionRepository) applyFilter(builder sq.SelectBuilder, filter Tra
 		} else {
 			builder = builder.Where("ts.rejected_at IS NULL")
 		}
+	}
+
+	if filter.StatusID != nil {
+		builder = builder.Where(sq.Eq{"ts.id": *filter.StatusID})
 	}
 
 	if filter.Type != nil {
@@ -98,8 +104,10 @@ func (s *TransactionRepository) buildQuery(filter TransactionRepositoryFilter, o
 			"tr.reference",
 			"tr.amount",
 			"tr.type",
+			"tr.ledger AS ledger_type",
 			"tr.created_at",
 			// transaction status fields
+			"ts.id AS status_id",
 			"ts.confirmed_at",
 			"ts.rejected_at",
 		)
@@ -112,7 +120,6 @@ func (s *TransactionRepository) buildQuery(filter TransactionRepositoryFilter, o
 		From("transactions tr").
 		Join("transaction_status ts ON tr.id = ts.transaction_id")
 
-	builder = builder.Where(sq.Eq{"tr.ledger": filter.LedgerType})
 	builder = s.applyFilter(builder, filter)
 
 	if queryType != QueryTypeCount {
@@ -149,19 +156,19 @@ func (t TransactionRepository) Create(ctx context.Context, transaction Transacti
 	return &createdTransaction, err
 }
 
-func (t TransactionRepository) Get(ctx context.Context, filter TransactionRepositoryFilter) (*Transaction, error) {
+func (t TransactionRepository) Get(ctx context.Context, filter TransactionRepositoryFilter) (*PopTransaction, error) {
 	query, args, err := t.buildQuery(filter, QueryOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	var transaction Transaction
-	err = t.db.GetContext(ctx, &transaction, query, args...)
+	var popTxn PopTransaction
+	err = t.db.GetContext(ctx, &popTxn, query, args...)
 	if err != nil {
 		return nil, err
 	}
 
-	return &transaction, nil
+	return &popTxn, nil
 }
 
 func (s *TransactionRepository) List(ctx context.Context, filter TransactionRepositoryFilter, opts QueryOptions) (*ListResult[PopTransaction], error) {
@@ -198,8 +205,7 @@ func (s *TransactionRepository) GetStatus(ctx context.Context, filter Transactio
 		"ts.confirmed_at",
 		"ts.rejected_at",
 	).From("transaction_status ts").
-		Join("transactions tr ON ts.transaction_id = tr.id").
-		Where(sq.Eq{"tr.ledger": filter.LedgerType})
+		Join("transactions tr ON ts.transaction_id = tr.id")
 
 	// Apply filters from the input `filter`
 	builder = s.applyFilter(builder, filter)
@@ -261,7 +267,7 @@ func (s *TransactionRepository) UpdateStatus(ctx context.Context, transactionSta
 	builder := s.psql.Update("transaction_status").
 		Set("confirmed_at", transactionStatus.ConfirmedAt).
 		Set("rejected_at", transactionStatus.RejectedAt).
-		Where(sq.Eq{"transaction_id": transactionStatus.TransactionID}).
+		Where(sq.Eq{"id": transactionStatus.ID}).
 		Where(sq.Expr("confirmed_at IS NULL AND rejected_at IS NULL")).
 		Suffix("RETURNING *")
 

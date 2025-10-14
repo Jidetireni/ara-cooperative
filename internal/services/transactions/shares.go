@@ -57,8 +57,8 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 
 	// Compute fractional units with fixed precision
 	const precision = 4
-	computedUnits := float64(input.Amount) / float64(unitPrice)
-	computedUnits = math.Round(computedUnits*math.Pow10(precision)) / math.Pow10(precision)
+	scaled := math.Floor(float64(input.Amount) * math.Pow10(precision) / float64(unitPrice))
+	computedUnits := scaled / math.Pow10(precision)
 
 	if input.Units > 0 {
 		const eps = 1e-4
@@ -127,7 +127,7 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 		CreatedAt:     shares.CreatedAt,
 		ConfirmedAt:   status.ConfirmedAt,
 		RejectedAt:    status.RejectedAt,
-	})
+	}, transaction, status)
 	if err != nil {
 		return nil, err
 	}
@@ -135,29 +135,17 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 	return share, nil
 }
 
-func (t *Transaction) MapPopShareToDTO(share *repository.PopShare) (*dto.Shares, error) {
+func (t *Transaction) MapPopShareToDTO(share *repository.PopShare, txn *repository.Transaction, status *repository.TransactionStatus) (*dto.Shares, error) {
 	units, err := strconv.ParseFloat(share.Units, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid share units: %w", err)
 	}
 
-	status := dto.SavingsStatusPending
-	if share.ConfirmedAt.Valid {
-		status = dto.SavingsStatusConfirmed
-	} else if share.RejectedAt.Valid {
-		status = dto.SavingsStatusRejected
-	}
 	return &dto.Shares{
-		ID:            share.ID,
-		TransactionID: share.TransactionID,
-		MemberID:      share.MemberID,
-		Description:   share.Description,
-		Reference:     share.Reference,
-		Amount:        share.Amount,
-		Type:          dto.TransactionType(share.Type),
-		Units:         units,
-		UnitPrice:     share.UnitPrice,
-		CreatedAt:     share.CreatedAt,
-		Status:        status,
+		ID:          share.ID,
+		Transaction: *t.MapRepositoryToDTO(txn, status),
+		Units:       units,
+		UnitPrice:   share.UnitPrice,
+		CreatedAt:   share.CreatedAt,
 	}, nil
 }

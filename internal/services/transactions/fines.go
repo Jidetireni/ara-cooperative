@@ -55,14 +55,13 @@ func (t *Transaction) ChargeFine(ctx context.Context, input *dto.FineInput) (*dt
 	// Notify member via email (non-blocking)
 
 	return &dto.Fine{
-		ID:            created.ID,
-		MemberID:      created.MemberID,
-		Amount:        created.Amount,
-		TransactionID: &created.TransactionID.UUID,
-		Reason:        created.Reason,
-		Deadline:      created.Deadline,
-		Paid:          created.PaidAt.Valid,
-		CreatedAt:     created.CreatedAt,
+		ID:        created.ID,
+		MemberID:  created.MemberID,
+		Amount:    created.Amount,
+		Reason:    created.Reason,
+		Deadline:  created.Deadline,
+		Paid:      created.PaidAt.Valid,
+		CreatedAt: created.CreatedAt,
 	}, nil
 }
 
@@ -124,7 +123,7 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 		_ = tx.Rollback()
 	}()
 
-	createdTx, _, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
+	createdTxn, status, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
 		Input: dto.TransactionsInput{
 			Amount:      fine.Amount,
 			Description: description,
@@ -136,23 +135,12 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 		return nil, err
 	}
 
-	_, err = t.TransactionRepo.UpdateStatus(ctx, repository.TransactionStatus{
-		TransactionID: createdTx.ID,
-		ConfirmedAt: sql.NullTime{
-			Time:  time.Now(),
-			Valid: true,
-		},
-	}, tx)
-	if err != nil {
-		return nil, err
-	}
-
 	updatedFine, err := t.FineRepo.Update(ctx, &repository.Fine{
 		ID:            fine.ID,
 		MemberID:      fine.MemberID,
 		AdminID:       fine.AdminID,
 		Amount:        fine.Amount,
-		TransactionID: repository.ToNullUUID(createdTx.ID),
+		TransactionID: repository.ToNullUUID(createdTxn.ID),
 		Reason:        fine.Reason,
 		Deadline:      fine.Deadline,
 		PaidAt: sql.NullTime{
@@ -169,13 +157,13 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 	}
 
 	return &dto.Fine{
-		ID:            fine.ID,
-		MemberID:      fine.MemberID,
-		Amount:        fine.Amount,
-		TransactionID: &createdTx.ID,
-		Reason:        fine.Reason,
-		Deadline:      fine.Deadline,
-		Paid:          updatedFine.PaidAt.Valid,
-		CreatedAt:     fine.CreatedAt,
+		ID:          fine.ID,
+		MemberID:    fine.MemberID,
+		Amount:      fine.Amount,
+		Transaction: t.MapRepositoryToDTO(createdTxn, status),
+		Reason:      fine.Reason,
+		Deadline:    fine.Deadline,
+		Paid:        updatedFine.PaidAt.Valid,
+		CreatedAt:   fine.CreatedAt,
 	}, nil
 }
