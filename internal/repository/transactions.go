@@ -188,7 +188,8 @@ func (s *TransactionRepository) List(ctx context.Context, filter TransactionRepo
 	}
 
 	if len(transactions) > int(opts.Limit) {
-		lastItem := lo.LastOr(transactions, nil)
+		returnedItems := lo.Slice(transactions, 0, int(min(len(transactions), int(opts.Limit))))
+		lastItem := lo.LastOr(returnedItems, nil)
 		if lastItem != nil {
 			nextCursor := EncodeCursor(lastItem.CreatedAt.Time, lastItem.ID)
 			listResult.NextCursor = &nextCursor
