@@ -23,9 +23,7 @@ services:
       - ./:/app
     env_file:
       - .env
-    build:
-      context: .
-      dockerfile: ./dockerfile
+    image: tireni/ara-api:latest
     expose:
       - "8000:8000"
     depends_on:
