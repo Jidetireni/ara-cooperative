@@ -53,6 +53,6 @@ jobs:
           script: |
             cd /path/to/your/app
             echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-            docker-compose pull api
-            docker-compose up -d --no-build api
+            docker compose pull api
+            docker compose up -d --no-build api
             docker image prune -f
