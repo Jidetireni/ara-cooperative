@@ -11,12 +11,11 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
-	"github.com/google/uuid"
 )
 
 func (t *Transaction) SetSharesUnitPrice(ctx context.Context, input dto.SetShareUnitPriceInput) (string, error) {
 	if input.UnitPrice <= 0 {
-		return "", &svc.ApiError{
+		return "", &svc.APIError{
 			Status:  http.StatusBadRequest,
 			Message: "unit price must be a positive integer",
 		}
@@ -39,17 +38,14 @@ func (t *Transaction) GetSharesUnitPrice(ctx context.Context) int64 {
 }
 
 func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (*dto.Shares, error) {
-	user := users.FromContext(ctx)
-	if user.ID == uuid.Nil {
-		return nil, &svc.ApiError{
-			Status:  http.StatusUnauthorized,
-			Message: "unauthenticated",
-		}
+	actor, ok := users.FromContext(ctx)
+	if !ok {
+		return nil, svc.UnauthenticatedError()
 	}
 
 	unitPrice := t.GetSharesUnitPrice(ctx)
 	if unitPrice <= 0 {
-		return nil, &svc.ApiError{
+		return nil, &svc.APIError{
 			Status:  http.StatusServiceUnavailable,
 			Message: "unit price is not set",
 		}
@@ -63,7 +59,7 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 	if input.Units > 0 {
 		const eps = 1e-4
 		if math.Abs(computedUnits-input.Units) > eps {
-			return nil, &svc.ApiError{
+			return nil, &svc.APIError{
 				Status:  http.StatusBadRequest,
 				Message: fmt.Sprintf("amount %d does not correspond to units %.4f at unit price %d", input.Amount, input.Units, unitPrice),
 			}
@@ -73,7 +69,7 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 		input.Units = computedUnits
 	}
 
-	member, err := t.getMemberByUserID(ctx, user.ID)
+	member, err := t.getMemberByUserID(ctx, actor.ID)
 	if err != nil {
 		return nil, err
 	}

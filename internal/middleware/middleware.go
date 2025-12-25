@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/Jidetireni/ara-cooperative/pkg/logger"
 	"github.com/Jidetireni/ara-cooperative/pkg/token"
 )
 
@@ -11,10 +12,14 @@ import (
 // handle context very well too
 type Middleware struct {
 	TokenSvc *token.Jwt
+	Logger   *logger.Logger
 }
 
-func New(tokenSvc *token.Jwt) *Middleware {
-	return &Middleware{TokenSvc: tokenSvc}
+func New(tokenSvc *token.Jwt, logger *logger.Logger) *Middleware {
+	return &Middleware{
+		TokenSvc: tokenSvc,
+		Logger:   logger,
+	}
 }
 
 func (m *Middleware) apiError(w http.ResponseWriter, message string, code int) {

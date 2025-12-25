@@ -9,12 +9,11 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
-	"github.com/google/uuid"
 	"github.com/samber/lo"
 )
 
 func (h *Handlers) SetShareUnitPrice(w http.ResponseWriter, r *http.Request) {
-	permission := []constants.UserPermissions{constants.MemberWriteALLPermission}
+	permission := []constants.UserPermissions{constants.MemberWriteALL}
 	hasPermission := users.HasAdminPermissions(r.Context(), permission)
 	if !hasPermission {
 		h.errorResponse(w, r, svc.AdminForbiddenError(permission))
@@ -44,7 +43,7 @@ func (h *Handlers) GetShareQuote(w http.ResponseWriter, r *http.Request) {
 	if q := r.URL.Query().Get("amount"); q != "" {
 		amount, err := strconv.ParseInt(q, 10, 64)
 		if err != nil || amount <= 0 {
-			h.errorResponse(w, r, &svc.ApiError{
+			h.errorResponse(w, r, &svc.APIError{
 				Status:  http.StatusBadRequest,
 				Message: "amount must be a positive integer",
 			})
@@ -53,7 +52,7 @@ func (h *Handlers) GetShareQuote(w http.ResponseWriter, r *http.Request) {
 
 		unitPrice := h.factory.Services.Transactions.GetSharesUnitPrice(r.Context())
 		if unitPrice <= 0 {
-			h.errorResponse(w, r, &svc.ApiError{
+			h.errorResponse(w, r, &svc.APIError{
 				Status:  http.StatusServiceUnavailable,
 				Message: "unit price is not set",
 			})
@@ -72,7 +71,7 @@ func (h *Handlers) GetShareQuote(w http.ResponseWriter, r *http.Request) {
 		}, nil)
 		return
 	} else {
-		h.errorResponse(w, r, &svc.ApiError{
+		h.errorResponse(w, r, &svc.APIError{
 			Status:  http.StatusBadRequest,
 			Message: "amount query parameter is required",
 		})
@@ -96,7 +95,7 @@ func (h *Handlers) BuyShares(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) GetTotalSharesPurchased(w http.ResponseWriter, r *http.Request) {
-	permission := []constants.UserPermissions{constants.MemberReadALLPermission}
+	permission := []constants.UserPermissions{constants.MemberReadALL}
 	hasPermission := users.HasAdminPermissions(r.Context(), permission)
 	if !hasPermission {
 		h.errorResponse(w, r, svc.AdminForbiddenError(permission))
@@ -130,17 +129,14 @@ func (h *Handlers) GetTotalSharesPurchased(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handlers) GetMemberTotalSharesPurchased(w http.ResponseWriter, r *http.Request) {
-	userID := users.FromContext(r.Context()).ID
-	if userID == uuid.Nil {
-		h.errorResponse(w, r, &svc.ApiError{
-			Status:  http.StatusUnauthorized,
-			Message: "unauthenticated",
-		})
+	actor, ok := users.FromContext(r.Context())
+	if !ok {
+		h.errorResponse(w, r, svc.UnauthenticatedError())
 		return
 	}
 
 	member, err := h.factory.Repositories.Member.Get(r.Context(), repository.MemberRepositoryFilter{
-		UserID: &userID,
+		UserID: &actor.ID,
 	})
 	if err != nil {
 		h.errorResponse(w, r, err)

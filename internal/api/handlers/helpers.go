@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
+	"github.com/Jidetireni/ara-cooperative/pkg/token"
 )
 
 // TODO: seperate some errors to be authomatically handled
@@ -67,4 +69,26 @@ func (h *Handlers) getTransactionFiltersQuery(r *http.Request) *dto.TransactionF
 	}
 
 	return &filters
+}
+
+// setRefreshCookie handles the specific logic of attaching the cookie
+func setRefreshCookie(w http.ResponseWriter, refreshToken string, duration time.Duration, isDev bool) {
+	secure := true
+	sameSite := http.SameSiteStrictMode
+
+	if isDev {
+		secure = false
+		sameSite = http.SameSiteLaxMode
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     token.RefreshTokenName,
+		Value:    refreshToken,
+		Path:     "/",
+		Expires:  time.Now().Add(duration),
+		MaxAge:   int(duration.Seconds()),
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: sameSite,
+	})
 }

@@ -21,6 +21,7 @@ type Seed struct {
 	DB              *database.PostgresDB
 	UserRepo        *repository.UserRepository
 	RolesRepo       *repository.RoleRepository
+	PermissionRepo  *repository.PermissionRepository
 	MemberRepo      *repository.MemberRepository
 	TokenRepo       *repository.TokenRepository
 	TransactionRepo *repository.TransactionRepository
@@ -38,9 +39,10 @@ func NewSeeder(cfg *config.Config) (*Seed, func(), error) {
 
 	return &Seed{
 		Config:          cfg,
-		DB:              fx.DB,
+		DB:              fx.Pkgs.DB,
 		UserRepo:        fx.Repositories.User,
 		RolesRepo:       fx.Repositories.Role,
+		PermissionRepo:  fx.Repositories.Permission,
 		MemberRepo:      fx.Repositories.Member,
 		TokenRepo:       fx.Repositories.Token,
 		TransactionRepo: fx.Repositories.Transaction,
@@ -130,6 +132,14 @@ func (s *Seed) CreateRootUser() error {
 		return fmt.Errorf("no roles found; ensure roles are seeded before creating root user")
 	}
 
+	permissions, err := s.PermissionRepo.List(ctx, &repository.PermissionRepositoryFilter{})
+	if err != nil {
+		return fmt.Errorf("fetch permissions: %w", err)
+	}
+	if len(permissions) == 0 {
+		return fmt.Errorf("no permissions found; ensure permissions are seeded before creating root user")
+	}
+
 	// Hash password
 	hash, err := bcrypt.GenerateFromPassword([]byte(s.Config.Server.RootUserPassword), bcrypt.DefaultCost)
 	if err != nil {
@@ -171,6 +181,15 @@ func (s *Seed) CreateRootUser() error {
 		return fmt.Errorf("assign roles to root user: %w", err)
 	}
 
+	permissionsIDs := lo.Map(permissions, func(p repository.Permission, _ int) uuid.UUID {
+		return p.ID
+	})
+
+	err = s.PermissionRepo.AssignToUser(ctx, &createdUser.ID, permissionsIDs, tx)
+	if err != nil {
+		return fmt.Errorf("assign permissions to root user: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit root user creation: %w", err)
 	}
@@ -186,15 +205,12 @@ func (s *Seed) CreateDefaultMembers() error {
 	fmt.Println("Creating default members...")
 
 	// Get member roles (non-admin permissions)
-	memberPermissions := []string{
-		string(constants.MemberReadOwnPermission),
-		string(constants.MemberWriteOwnPermission),
-		string(constants.LedgerReadOwnPermission),
-		string(constants.LoanApplyPermission),
+	memberRole := []string{
+		string(constants.RoleMember),
 	}
 
 	memberRoles, err := s.RolesRepo.List(ctx, &repository.RoleRepositoryFilter{
-		Permission: memberPermissions,
+		Name: memberRole,
 	})
 	if err != nil {
 		return fmt.Errorf("fetch member roles: %w", err)

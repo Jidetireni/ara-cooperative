@@ -3,7 +3,6 @@ package members
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -24,10 +23,11 @@ import (
 )
 
 var (
-	_ MemberRepository = (*repository.MemberRepository)(nil)
-	_ UserRepository   = (*repository.UserRepository)(nil)
-	_ RoleRepository   = (*repository.RoleRepository)(nil)
-	_ TokenRepository  = (*repository.TokenRepository)(nil)
+	_ MemberRepository     = (*repository.MemberRepository)(nil)
+	_ UserRepository       = (*repository.UserRepository)(nil)
+	_ RoleRepository       = (*repository.RoleRepository)(nil)
+	_ PermissionRepository = (*repository.PermissionRepository)(nil)
+	_ TokenRepository      = (*repository.TokenRepository)(nil)
 )
 
 var (
@@ -36,8 +36,8 @@ var (
 
 type MemberRepository interface {
 	Create(ctx context.Context, member *repository.Member, tx *sqlx.Tx) (*repository.Member, error)
-	Exists(ctx context.Context, filter repository.MemberRepositoryFilter) (bool, error)
 	Get(ctx context.Context, filter repository.MemberRepositoryFilter) (*repository.Member, error)
+	MapRepositoryToDTO(member *repository.Member) *dto.Member
 }
 
 type UserRepository interface {
@@ -48,6 +48,11 @@ type UserRepository interface {
 type RoleRepository interface {
 	List(ctx context.Context, filter *repository.RoleRepositoryFilter) ([]repository.Role, error)
 	AssignToUser(ctx context.Context, userID *uuid.UUID, roleIDs []uuid.UUID, tx *sqlx.Tx) error
+}
+
+type PermissionRepository interface {
+	List(ctx context.Context, filter *repository.PermissionRepositoryFilter) ([]repository.Permission, error)
+	AssignToUser(ctx context.Context, userID *uuid.UUID, permissionIDs []uuid.UUID, tx *sqlx.Tx) error
 }
 
 type TokenRepository interface {
@@ -64,48 +69,27 @@ type Member struct {
 	MemberRepository MemberRepository
 	UserRepository   UserRepository
 	RoleRepository   RoleRepository
+	PermissionRepo   PermissionRepository
 	TokenRepo        TokenRepository
 	Email            EmailPkg
 }
 
-func New(db *sqlx.DB, config *config.Config, memberRepo MemberRepository, userRepo UserRepository, roleRepo RoleRepository, tokenRepo TokenRepository, emailPkg EmailPkg) *Member {
+func New(db *sqlx.DB, config *config.Config, memberRepo MemberRepository, userRepo UserRepository, roleRepo RoleRepository, permissionRepo PermissionRepository, tokenRepo TokenRepository, emailPkg EmailPkg) *Member {
 	return &Member{
 		DB:               db,
 		Config:           config,
 		MemberRepository: memberRepo,
 		UserRepository:   userRepo,
 		RoleRepository:   roleRepo,
+		PermissionRepo:   permissionRepo,
 		TokenRepo:        tokenRepo,
 		Email:            emailPkg,
 	}
 }
 
 func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.Member, error) {
-	emailExists, err := m.UserRepository.Exists(ctx, repository.UserRepositoryFilter{
-		Email: &input.Email,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if emailExists {
-		return nil, &svc.ApiError{
-			Status:  http.StatusBadRequest,
-			Message: "Email already exists",
-		}
-	}
-
-	phoneExists, err := m.MemberRepository.Exists(ctx, repository.MemberRepositoryFilter{
-		Phone: &input.Phone,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if phoneExists {
-		return nil, &svc.ApiError{
-			Status:  http.StatusConflict,
-			Message: "Phone number already exists",
-		}
-	}
+	rawToken := helpers.GenerateOTP()
+	tokenHash := helpers.HashToken(rawToken)
 
 	tx, err := m.DB.BeginTxx(ctx, nil)
 	if err != nil {
@@ -115,10 +99,6 @@ func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.M
 
 	user, err := m.UserRepository.Create(ctx, &repository.User{
 		Email: input.Email,
-		PasswordHash: sql.NullString{
-			String: "",
-			Valid:  false,
-		},
 	}, tx)
 	if err != nil {
 		return &dto.Member{}, err
@@ -148,35 +128,15 @@ func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.M
 		return &dto.Member{}, err
 	}
 
-	defaultPermissions := []string{
-		string(constants.MemberReadOwnPermission),
-		string(constants.MemberWriteOwnPermission),
-		string(constants.LedgerReadOwnPermission),
-		string(constants.LoanApplyPermission),
-	}
-
-	roles, err := m.RoleRepository.List(ctx, &repository.RoleRepositoryFilter{
-		Permission: defaultPermissions,
-	})
+	err = m.AssignDefaultRoleAndPermissions(ctx, user.ID, tx)
 	if err != nil {
 		return &dto.Member{}, err
 	}
 
-	rolesIDs := lo.Map(roles, func(role repository.Role, _ int) uuid.UUID {
-		return role.ID
-	})
-
-	err = m.RoleRepository.AssignToUser(ctx, &user.ID, rolesIDs, tx)
-	if err != nil {
-		return &dto.Member{}, err
-	}
-
-	tokenStr := lo.RandomString(12, lo.AlphanumericCharset)
-	tokenID := base64.URLEncoding.EncodeToString([]byte(tokenStr))
-	expiresAt := time.Now().Add(15 * time.Minute)
+	expiresAt := time.Now().Add(30 * time.Minute)
 	_, err = m.TokenRepo.Create(ctx, &repository.Token{
 		UserID:    user.ID,
-		Token:     tokenID,
+		Token:     tokenHash,
 		TokenType: token.SetPasswordToken,
 		IsValid:   true,
 		ExpiresAt: expiresAt,
@@ -185,27 +145,29 @@ func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.M
 		return nil, err
 	}
 
-	// TODO: send email with a stort live url to set password and sign up
-	// e.g http://localhost:5000/api/v1/set-password?token=some-token
-	setPasswordURL := fmt.Sprintf("%s/set-password?token=%s", m.Config.Server.FEURL, tokenID)
-	body := fmt.Sprintf("click here to set password: %s\n", setPasswordURL)
-
-	err = m.Email.Send(ctx, &email.SendEmailInput{
-		To:      input.Email,
-		Subject: "Set your password",
-		Body:    body,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Commit the transaction
 	if err := tx.Commit(); err != nil {
 		return &dto.Member{}, err
 	}
 
-	return m.mapRepositoryToHandler(member), nil
+	go func() {
+		body := fmt.Sprintf(
+			"Hello %s,\n\nYour account has been created.\nUse the following code to set your password:\n\n%s\n\nThis code expires in 15 minutes.",
+			input.FirstName,
+			rawToken,
+		)
 
+		err := m.Email.Send(context.Background(), &email.SendEmailInput{
+			To:      input.Email,
+			Subject: "Welcome! Verify your account",
+			Body:    body,
+		})
+		if err != nil {
+			// Log this error! The user exists but didn't get the code.
+			// fmt.Printf("Failed to send email to %s: %v\n", input.Email, err)
+		}
+	}()
+
+	return m.MemberRepository.MapRepositoryToDTO(member), nil
 }
 
 func (m *Member) GetBySlug(ctx context.Context, slug string) (*dto.Member, error) {
@@ -214,7 +176,7 @@ func (m *Member) GetBySlug(ctx context.Context, slug string) (*dto.Member, error
 	})
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, &svc.ApiError{
+			return nil, &svc.APIError{
 				Status:  http.StatusNotFound,
 				Message: "Member not found",
 			}
@@ -222,7 +184,7 @@ func (m *Member) GetBySlug(ctx context.Context, slug string) (*dto.Member, error
 		return nil, err
 	}
 
-	return m.mapRepositoryToHandler(member), nil
+	return m.MemberRepository.MapRepositoryToDTO(member), nil
 }
 
 func (m *Member) IsMemberActive(ctx context.Context, memberID uuid.UUID) (bool, error) {
@@ -231,7 +193,7 @@ func (m *Member) IsMemberActive(ctx context.Context, memberID uuid.UUID) (bool, 
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return false, &svc.ApiError{
+			return false, &svc.APIError{
 				Status:  http.StatusNotFound,
 				Message: "member not found",
 			}
@@ -247,19 +209,46 @@ func (m *Member) IsMemberActive(ctx context.Context, memberID uuid.UUID) (bool, 
 	return isActive, nil
 }
 
-func (m *Member) mapRepositoryToHandler(member *repository.Member) *dto.Member {
-	isActive := false
-	if member.ActivatedAt.Valid {
-		isActive = true
+func (m *Member) AssignDefaultRoleAndPermissions(ctx context.Context, userID uuid.UUID, tx *sqlx.Tx) error {
+	defaultRole := []string{
+		string(constants.RoleMember),
 	}
-	return &dto.Member{
-		ID:             member.ID,
-		FirstName:      member.FirstName,
-		LastName:       member.LastName,
-		Slug:           member.Slug,
-		Address:        member.Address.String,
-		NextOfKinName:  member.NextOfKinName.String,
-		NextOfKinPhone: member.NextOfKinPhone.String,
-		IsActive:       isActive,
+
+	roles, err := m.RoleRepository.List(ctx, &repository.RoleRepositoryFilter{
+		Name: defaultRole,
+	})
+	if err != nil {
+		return err
 	}
+
+	roleIDs := lo.Map(roles, func(role repository.Role, _ int) uuid.UUID {
+		return role.ID
+	})
+
+	err = m.RoleRepository.AssignToUser(ctx, &userID, roleIDs, tx)
+	if err != nil {
+		return err
+	}
+
+	defaultPermmision := []string{
+		string(constants.LoanApply),
+	}
+
+	permmisions, err := m.PermissionRepo.List(ctx, &repository.PermissionRepositoryFilter{
+		Slug: defaultPermmision,
+	})
+	if err != nil {
+		return err
+	}
+
+	permissionIDs := lo.Map(permmisions, func(permission repository.Permission, _ int) uuid.UUID {
+		return permission.ID
+	})
+
+	err = m.PermissionRepo.AssignToUser(ctx, &userID, permissionIDs, tx)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

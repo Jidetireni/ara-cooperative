@@ -14,7 +14,7 @@ import (
 )
 
 func (h *Handlers) UpdateStatus(w http.ResponseWriter, r *http.Request) {
-	permission := []constants.UserPermissions{constants.MemberWriteALLPermission}
+	permission := []constants.UserPermissions{constants.MemberWriteALL}
 	hasPermission := users.HasAdminPermissions(r.Context(), permission)
 	if !hasPermission {
 		h.errorResponse(w, r, svc.AdminForbiddenError(permission))
@@ -24,7 +24,7 @@ func (h *Handlers) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	statusIDStr := chi.URLParam(r, "status_id")
 	statusID, err := uuid.Parse(statusIDStr)
 	if err != nil {
-		h.errorResponse(w, r, &svc.ApiError{
+		h.errorResponse(w, r, &svc.APIError{
 			Status:  http.StatusBadRequest,
 			Message: "Invalid status ID",
 		})
@@ -50,7 +50,7 @@ func (h *Handlers) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) ListPendingTransactions(w http.ResponseWriter, r *http.Request) {
-	permission := []constants.UserPermissions{constants.MemberReadALLPermission}
+	permission := []constants.UserPermissions{constants.MemberReadALL}
 	hasPermission := users.HasAdminPermissions(r.Context(), permission)
 	if !hasPermission {
 		h.errorResponse(w, r, svc.AdminForbiddenError(permission))

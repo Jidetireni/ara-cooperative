@@ -22,11 +22,11 @@ const (
 )
 
 type CreatetokenParams struct {
-	ID       uuid.UUID
-	Email    string
-	Roles    []string
-	JwtType  JWTType
-	Duration time.Duration
+	ID          uuid.UUID
+	Email       string
+	Roles       []string
+	Permissions []string
+	Duration    time.Duration
 }
 
 type TokenPair struct {
@@ -35,10 +35,10 @@ type TokenPair struct {
 }
 
 type TokenPairParams struct {
-	ID      uuid.UUID
-	Email   string
-	Roles   []string
-	JwtType JWTType
+	ID          uuid.UUID
+	Email       string
+	Roles       []string
+	Permissions []string
 }
 
 type TokenExpirationConfig struct {

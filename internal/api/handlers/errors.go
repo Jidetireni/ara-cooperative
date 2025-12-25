@@ -14,11 +14,19 @@ func (h *Handlers) logError(r *http.Request, err error) {
 
 func (h *Handlers) errorResponse(w http.ResponseWriter, r *http.Request, message any) {
 	status := http.StatusInternalServerError
-	msg := "internal server error"
 
-	if apiErr, ok := message.(*services.ApiError); ok {
+	resp := map[string]any{
+		"status":  status,
+		"message": "Internal Server Error",
+	}
+
+	if apiErr, ok := message.(*services.APIError); ok {
 		status = apiErr.Status
-		msg = apiErr.Message
+		resp["status"] = status
+		resp["message"] = apiErr.Message
+		if apiErr.Errors != nil {
+			resp["errors"] = apiErr.Errors
+		}
 	} else if err, ok := message.(error); ok {
 		h.logError(r, err)
 	} else {
@@ -27,10 +35,7 @@ func (h *Handlers) errorResponse(w http.ResponseWriter, r *http.Request, message
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(map[string]any{
-		"message": msg,
-		"status":  status,
-	}); err != nil {
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		h.logError(r, fmt.Errorf("failed to write error response: %w", err))
 		return
 	}
