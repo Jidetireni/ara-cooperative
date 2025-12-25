@@ -16,7 +16,7 @@ func (h *Handlers) PayRegistrationFee(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if input.Amount != transactions.DefaultRegistrationFee {
-		h.errorResponse(w, r, svc.ApiError{
+		h.errorResponse(w, r, svc.APIError{
 			Status:  http.StatusBadRequest,
 			Message: fmt.Sprintf("registration fee must be exactly %d", transactions.DefaultRegistrationFee),
 		})

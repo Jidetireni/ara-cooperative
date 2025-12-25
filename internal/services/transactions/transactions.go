@@ -80,7 +80,7 @@ func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dt
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, &svc.ApiError{
+			return nil, &svc.APIError{
 				Status:  http.StatusNotFound,
 				Message: "transaction status not found",
 			}
@@ -90,7 +90,7 @@ func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dt
 
 	// Determine desired action
 	if input.Confirmed == nil {
-		return nil, &svc.ApiError{
+		return nil, &svc.APIError{
 			Status:  http.StatusBadRequest,
 			Message: "confirmed field is required",
 		}
@@ -113,14 +113,14 @@ func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dt
 
 	// Conflict checks
 	if wantConfirmed && status.RejectedAt.Valid {
-		return nil, &svc.ApiError{
+		return nil, &svc.APIError{
 			Status:  http.StatusConflict,
 			Message: "cannot confirm a rejected transaction",
 		}
 	}
 
 	if !wantConfirmed && status.ConfirmedAt.Valid {
-		return nil, &svc.ApiError{
+		return nil, &svc.APIError{
 			Status:  http.StatusConflict,
 			Message: "cannot reject a confirmed transaction",
 		}
@@ -189,15 +189,12 @@ func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dt
 // TODO: integrate a payment platform here but for now it would be manual
 // CreateTransaction creates a generic transaction with status tracking
 func (t *Transaction) CreateTransaction(ctx context.Context, params TransactionParams) (*dto.Transactions, error) {
-	user := users.FromContext(ctx)
-	if user.ID == uuid.Nil {
-		return nil, &svc.ApiError{
-			Status:  http.StatusUnauthorized,
-			Message: "unauthenticated",
-		}
+	actor, ok := users.FromContext(ctx)
+	if !ok {
+		return nil, svc.UnauthenticatedError()
 	}
 
-	member, err := t.getMemberByUserID(ctx, user.ID)
+	member, err := t.getMemberByUserID(ctx, actor.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -257,16 +254,16 @@ func (t *Transaction) createTransactionWithStatus(ctx context.Context, memberID 
 }
 
 func (t *Transaction) GetBalance(ctx context.Context, legder repository.LedgerType) (int64, error) {
-	user := users.FromContext(ctx)
-	if user.ID == uuid.Nil {
-		return 0, &svc.ApiError{
+	actor, ok := users.FromContext(ctx)
+	if !ok {
+		return 0, &svc.APIError{
 			Status:  http.StatusUnauthorized,
 			Message: "unauthenticated",
 		}
 	}
 
 	member, err := t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{
-		UserID: &user.ID,
+		UserID: &actor.ID,
 	})
 	if err != nil {
 		return 0, err

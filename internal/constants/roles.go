@@ -11,65 +11,75 @@ import (
 type UserPermissions string
 
 const (
-	MemberWriteALLPermission UserPermissions = "member:write:all"
-	MemberReadALLPermission  UserPermissions = "member:read:all"
-	MemberWriteOwnPermission UserPermissions = "member:write:own"
-	MemberReadOwnPermission  UserPermissions = "member:read:own"
-
-	LoanApplyPermission   UserPermissions = "loan:apply"
-	LoanApprovePermission UserPermissions = "loan:approve"
-
-	LedgerReadALLPermission UserPermissions = "ledger:read:all"
-	LedgerReadOwnPermission UserPermissions = "ledger:read:own"
-
-	RoleAssignPermission UserPermissions = "role:assign"
+	MemberWriteALL UserPermissions = "member:write:all"
+	MemberReadALL  UserPermissions = "member:read:all"
+	LoanApply      UserPermissions = "loan:apply"
+	LoanApprove    UserPermissions = "loan:approve"
+	LedgerReadALL  UserPermissions = "ledger:read:all"
+	RoleAssign     UserPermissions = "role:assign"
 )
 
+const (
+	RoleAdmin  = "admin"
+	RoleMember = "member"
+)
+
+var RolePermissions = map[string][]UserPermissions{
+	RoleAdmin: {
+		MemberWriteALL,
+		MemberReadALL,
+		LoanApply,
+		LoanApprove,
+		LedgerReadALL,
+		RoleAssign,
+	},
+	RoleMember: {
+		MemberReadALL,
+		LoanApply,
+	},
+}
+
 type jsonRole struct {
-	Permission  string `json:"permission"`
+	Slug        string `json:"slug"`
 	Description string `json:"description"`
 }
 
 //go:embed data/permissions.json
-var rolesJSON []byte
+var permissionsJSON []byte
 
-var Roles []repository.Role
+var Permissions []repository.Permission
 
 func IsValidUserPermission(permission string) bool {
 	switch UserPermissions(permission) {
-	case MemberWriteALLPermission,
-		MemberReadALLPermission,
-		MemberWriteOwnPermission,
-		MemberReadOwnPermission,
-		LoanApplyPermission,
-		LoanApprovePermission,
-		LedgerReadALLPermission,
-		LedgerReadOwnPermission,
-		RoleAssignPermission:
+	case MemberWriteALL,
+		MemberReadALL,
+		LoanApply,
+		LoanApprove,
+		LedgerReadALL,
+		RoleAssign:
 		return true
 	default:
 		return false
-
 	}
 
 }
 
 func init() {
-	var jsonRoles []jsonRole
-	if err := json.Unmarshal(rolesJSON, &jsonRoles); err != nil {
-		panic("failed to unmarshal roles JSON: " + err.Error())
+	var jsonPermissions []jsonRole
+	if err := json.Unmarshal(permissionsJSON, &jsonPermissions); err != nil {
+		panic("failed to unmarshal permissions JSON: " + err.Error())
 	}
 
-	Roles = make([]repository.Role, len(jsonRoles))
-	for i, role := range jsonRoles {
-		if !IsValidUserPermission(role.Permission) {
-			panic("invalid user permission: " + role.Permission)
+	Permissions = make([]repository.Permission, len(jsonPermissions))
+	for i, permission := range jsonPermissions {
+		if !IsValidUserPermission(permission.Slug) {
+			panic("invalid user permission: " + permission.Slug)
 		}
-		Roles[i] = repository.Role{
-			Permission: role.Permission,
+		Permissions[i] = repository.Permission{
+			Slug: permission.Slug,
 			Description: sql.NullString{
-				String: role.Description,
-				Valid:  role.Description != "",
+				String: permission.Description,
+				Valid:  permission.Description != "",
 			},
 		}
 	}

@@ -15,19 +15,16 @@ import (
 )
 
 func (t *Transaction) ChargeFine(ctx context.Context, input *dto.FineInput) (*dto.Fine, error) {
-	user := users.FromContext(ctx)
-	if user.ID == uuid.Nil {
-		return nil, &svc.ApiError{
-			Status:  http.StatusUnauthorized,
-			Message: "unauthenticated",
-		}
+	actor, ok := users.FromContext(ctx)
+	if !ok {
+		return nil, svc.UnauthenticatedError()
 	}
 
 	// Ensure member exists (avoid FK violation)
 	_, err := t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{ID: &input.MemberID})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, &svc.ApiError{Status: http.StatusNotFound, Message: "member not found"}
+			return nil, &svc.APIError{Status: http.StatusNotFound, Message: "member not found"}
 		}
 		return nil, err
 	}
@@ -35,14 +32,14 @@ func (t *Transaction) ChargeFine(ctx context.Context, input *dto.FineInput) (*dt
 	// Parse deadline (RFC3339 string)
 	deadline, err := time.Parse(time.RFC3339, input.Deadline)
 	if err != nil {
-		return nil, &svc.ApiError{
+		return nil, &svc.APIError{
 			Status:  http.StatusBadRequest,
 			Message: "invalid deadline format (use RFC3339)",
 		}
 	}
 
 	created, err := t.FineRepo.Create(ctx, &repository.Fine{
-		AdminID:  user.ID,
+		AdminID:  actor.ID,
 		MemberID: input.MemberID,
 		Amount:   input.Amount,
 		Reason:   input.Reason,
@@ -51,8 +48,6 @@ func (t *Transaction) ChargeFine(ctx context.Context, input *dto.FineInput) (*dt
 	if err != nil {
 		return nil, err
 	}
-
-	// Notify member via email (non-blocking)
 
 	return &dto.Fine{
 		ID:        created.ID,
@@ -66,28 +61,23 @@ func (t *Transaction) ChargeFine(ctx context.Context, input *dto.FineInput) (*dt
 }
 
 func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dto.TransactionsInput) (*dto.Fine, error) {
-	user := users.FromContext(ctx)
-	if user.ID == uuid.Nil {
-		return nil, &svc.ApiError{
-			Status:  http.StatusUnauthorized,
-			Message: "unauthenticated",
-		}
+	actor, ok := users.FromContext(ctx)
+	if !ok {
+		return nil, svc.UnauthenticatedError()
 	}
 
-	// Resolve member from user
-	member, err := t.getMemberByUserID(ctx, user.ID)
+	member, err := t.getMemberByUserID(ctx, actor.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Fetch fine and validate ownership
 	fine, err := t.FineRepo.Get(ctx, repository.FineRepositoryFilter{
 		ID:       &fineID,
 		MemberID: &member.ID,
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, &svc.ApiError{
+			return nil, &svc.APIError{
 				Status:  http.StatusNotFound,
 				Message: "fine not found",
 			}
@@ -96,14 +86,14 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 	}
 
 	if fine.PaidAt.Valid {
-		return nil, &svc.ApiError{
+		return nil, &svc.APIError{
 			Status:  http.StatusBadRequest,
 			Message: "fine already paid",
 		}
 	}
 
 	if fine.Amount != txInput.Amount {
-		return nil, &svc.ApiError{
+		return nil, &svc.APIError{
 			Status:  http.StatusBadRequest,
 			Message: "payment amount does not match fine amount",
 		}

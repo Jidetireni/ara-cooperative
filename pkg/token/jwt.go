@@ -20,7 +20,7 @@ func NewJwt(secretKey string, isDev bool) *Jwt {
 }
 
 func (j *Jwt) createToken(params *CreatetokenParams) (string, *UserClaims, error) {
-	claims, err := NewUserClaims(params)
+	claims, err := newUserClaims(params)
 	if err != nil {
 		return "", nil, err
 	}
@@ -61,27 +61,23 @@ func (j *Jwt) GenerateTokenPair(params *TokenPairParams) (*TokenPair, error) {
 	}
 
 	accessToken, _, err := j.createToken(&CreatetokenParams{
-		ID:       params.ID,
-		Email:    params.Email,
-		Roles:    params.Roles,
-		JwtType:  params.JwtType,
-		Duration: accessExpiry,
+		ID:          params.ID,
+		Email:       params.Email,
+		Roles:       params.Roles,
+		Permissions: params.Permissions,
+		Duration:    accessExpiry,
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	refreshExpiry := RefreshTokenExpirationTime
-	if params.JwtType == JWTTypeAdmin {
-		refreshExpiry = RefreshTokenExpirationTimeForAdmin
-	}
-
 	refreshToken, _, err := j.createToken(&CreatetokenParams{
-		ID:       params.ID,
-		Email:    params.Email,
-		Roles:    params.Roles,
-		JwtType:  params.JwtType,
-		Duration: refreshExpiry,
+		ID:          params.ID,
+		Email:       params.Email,
+		Roles:       params.Roles,
+		Permissions: params.Permissions,
+		Duration:    refreshExpiry,
 	})
 	if err != nil {
 		return nil, err

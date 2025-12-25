@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Jidetireni/ara-cooperative/internal/dto"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -186,4 +187,21 @@ func (mq *MemberRepository) List(ctx context.Context, filter MemberRepositoryFil
 	}
 
 	return &listResult, nil
+}
+
+func (mq *MemberRepository) MapRepositoryToDTO(member *Member) *dto.Member {
+	isActive := false
+	if member.ActivatedAt.Valid {
+		isActive = true
+	}
+	return &dto.Member{
+		ID:             member.ID,
+		FirstName:      member.FirstName,
+		LastName:       member.LastName,
+		Slug:           member.Slug,
+		Address:        member.Address.String,
+		NextOfKinName:  member.NextOfKinName.String,
+		NextOfKinPhone: member.NextOfKinPhone.String,
+		IsActive:       isActive,
+	}
 }

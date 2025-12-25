@@ -30,6 +30,7 @@ func New(URL string, dbType string) (*PostgresDB, func(), error) {
 	}
 
 	pgDB.upsertRoles()
+	pgDB.upsertPermissions()
 
 	return pgDB, cleanup, nil
 }
@@ -54,18 +55,47 @@ func initDB(URL string, dbType string) (*sqlx.DB, func(), error) {
 	return db, cleanup, nil
 }
 
-func (p *PostgresDB) upsertRoles() {
-	fmt.Println("Upserting roles...")
-	if len(constants.Roles) == 0 {
-		log.Println("No roles to upsert. Check constants.Roles initialization.")
+func (p *PostgresDB) upsertPermissions() {
+	fmt.Println("Upserting permissions...")
+	if len(constants.Permissions) == 0 {
+		log.Println("No permissions to upsert. Check constants.Permissions initialization.")
 		return
 	}
 
-	for _, role := range constants.Roles {
+	for _, role := range constants.Permissions {
+		builder := p.SqlBuilder.Insert("permissions").
+			Columns("slug", "description").
+			Values(role.Slug, role.Description).
+			Suffix("ON CONFLICT (slug) DO UPDATE SET description = EXCLUDED.description")
+
+		query, args, err := builder.ToSql()
+		if err != nil {
+			log.Fatalf("Failed to build upsert query: %v\n", err)
+		}
+
+		_, err = p.DB.ExecContext(context.Background(), query, args...)
+		if err != nil {
+			log.Fatalf("Failed to upsert permissions: %v\n", err)
+		}
+		log.Printf("Permission %s upserted successfully.\n", role.Slug)
+	}
+	fmt.Println("Permissions upserted successfully.")
+}
+
+func (p *PostgresDB) upsertRoles() {
+	fmt.Println("Upserting roles...")
+	roles := []struct {
+		Name string
+	}{
+		{Name: string(constants.RoleAdmin)},
+		{Name: string(constants.RoleMember)},
+	}
+
+	for _, role := range roles {
 		builder := p.SqlBuilder.Insert("roles").
-			Columns("permission", "description").
-			Values(role.Permission, role.Description).
-			Suffix("ON CONFLICT (permission) DO UPDATE SET description = EXCLUDED.description")
+			Columns("name").
+			Values(role.Name).
+			Suffix("ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name")
 
 		query, args, err := builder.ToSql()
 		if err != nil {
@@ -76,7 +106,7 @@ func (p *PostgresDB) upsertRoles() {
 		if err != nil {
 			log.Fatalf("Failed to upsert roles: %v\n", err)
 		}
-		log.Printf("Role %s upserted successfully.\n", role.Permission)
+		log.Printf("Role %s upserted successfully.\n", role.Name)
 	}
 	fmt.Println("Roles upserted successfully.")
 }

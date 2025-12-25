@@ -10,6 +10,7 @@ import (
 
 	"github.com/Jidetireni/ara-cooperative/pkg/database"
 	emailpkg "github.com/Jidetireni/ara-cooperative/pkg/email"
+	"github.com/Jidetireni/ara-cooperative/pkg/logger"
 	"github.com/Jidetireni/ara-cooperative/pkg/token"
 	"github.com/go-chi/chi/v5"
 )
@@ -18,6 +19,7 @@ type Repositories struct {
 	Member      *repository.MemberRepository
 	User        *repository.UserRepository
 	Role        *repository.RoleRepository
+	Permission  *repository.PermissionRepository
 	Token       *repository.TokenRepository
 	Transaction *repository.TransactionRepository
 	Share       *repository.ShareRepository
@@ -30,11 +32,16 @@ type Services struct {
 	Transactions *transactions.Transaction
 }
 
+type Packages struct {
+	DB     *database.PostgresDB
+	Email  *emailpkg.Email
+	JWTTok *token.Jwt
+	Logger *logger.Logger
+}
+
 type Factory struct {
-	DB           *database.PostgresDB
-	JWTToken     *token.Jwt
-	Email        *emailpkg.Email
 	Router       *chi.Mux
+	Pkgs         *Packages
 	Services     *Services
 	Repositories *Repositories
 	Middleware   *middleware.Middleware
@@ -53,9 +60,12 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		return nil, nil, err
 	}
 
+	logger := logger.New(*cfg)
+
 	userRepo := repository.NewUserRepository(db.DB)
 	memberRepo := repository.NewMemberRepository(db.DB)
 	roleRepo := repository.NewRoleRepository(db.DB)
+	permissionRepo := repository.NewPermissionRepository(db.DB)
 	tokenRepo := repository.NewTokenRepository(db.DB)
 	transactionRepo := repository.NewTransactionRepository(db.DB)
 	shareRepo := repository.NewShareRepository(db.DB)
@@ -67,6 +77,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		memberRepo,
 		userRepo,
 		roleRepo,
+		permissionRepo,
 		tokenRepo,
 		email,
 	)
@@ -77,6 +88,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		jwtToken,
 		userRepo,
 		roleRepo,
+		permissionRepo,
 		tokenRepo,
 	)
 
@@ -88,13 +100,16 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		fineRepo,
 	)
 
-	middleware := middleware.New(jwtToken)
+	middleware := middleware.New(jwtToken, logger)
 
 	return &Factory{
-			DB:       db,
-			JWTToken: jwtToken,
-			Router:   chi.NewRouter(),
-			Email:    email,
+			Router: chi.NewRouter(),
+			Pkgs: &Packages{
+				DB:     db,
+				Email:  email,
+				JWTTok: jwtToken,
+				Logger: logger,
+			},
 			Services: &Services{
 				Member:       membersService,
 				User:         usersService,
@@ -104,6 +119,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 				Member:      memberRepo,
 				User:        userRepo,
 				Role:        roleRepo,
+				Permission:  permissionRepo,
 				Token:       tokenRepo,
 				Transaction: transactionRepo,
 				Share:       shareRepo,

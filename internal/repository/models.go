@@ -132,11 +132,17 @@ type Member struct {
 	DeletedAt      sql.NullTime   `json:"deleted_at"`
 }
 
-type Role struct {
+type Permission struct {
 	ID          uuid.UUID      `json:"id"`
-	Permission  string         `json:"permission"`
+	Slug        string         `json:"slug"`
 	Description sql.NullString `json:"description"`
 	CreatedAt   time.Time      `json:"created_at"`
+}
+
+type Role struct {
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Share struct {
@@ -187,6 +193,13 @@ type User struct {
 	CreatedAt        time.Time      `json:"created_at"`
 	UpdatedAt        sql.NullTime   `json:"updated_at"`
 	DeletedAt        sql.NullTime   `json:"deleted_at"`
+}
+
+type UserPermission struct {
+	ID           uuid.UUID `json:"id"`
+	UserID       uuid.UUID `json:"user_id"`
+	PermissionID uuid.UUID `json:"permission_id"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type UserRole struct {

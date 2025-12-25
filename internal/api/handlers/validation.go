@@ -2,33 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
-	"github.com/go-playground/locales/en"
-	ut "github.com/go-playground/universal-translator"
 	"github.com/go-playground/validator/v10"
-	en_translations "github.com/go-playground/validator/v10/translations/en"
 )
-
-var (
-	validate *validator.Validate
-	trans    ut.Translator
-)
-
-func init() {
-	validate = validator.New()
-
-	en := en.New()
-	uni := ut.New(en, en)
-	trans, _ = uni.GetTranslator("en")
-	if err := en_translations.RegisterDefaultTranslations(validate, trans); err != nil {
-		panic(err)
-	}
-
-}
 
 type ValidationError struct {
 	Field   string `json:"field"`
@@ -36,25 +16,35 @@ type ValidationError struct {
 }
 
 func (h *Handlers) decodeAndValidate(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
-		h.errorResponse(w, r, &svc.ApiError{
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(dst); err != nil {
+		h.errorResponse(w, r, &svc.APIError{
 			Status:  http.StatusBadRequest,
-			Message: "Invalid request body",
+			Message: fmt.Sprintf("invalid request body: %v", err),
 		})
 		return false
 	}
 
-	if err := validate.Struct(dst); err != nil {
+	if err := h.validate.Struct(dst); err != nil {
 		var validationErrors []ValidationError
-		for _, err := range err.(validator.ValidationErrors) {
-			validationErrors = append(validationErrors, ValidationError{
-				Field:   strings.ToLower(err.Field()),
-				Message: err.Translate(trans),
-			})
+		var ve validator.ValidationErrors
+		if errors.As(err, &ve) {
+			for _, fe := range ve {
+				validationErrors = append(validationErrors, ValidationError{
+					Field:   fe.Field(),
+					Message: fe.Translate(h.trans),
+				})
+			}
 		}
-		h.errorResponse(w, r, &svc.ApiError{
+
+		h.errorResponse(w, r, &svc.APIError{
 			Status:  http.StatusBadRequest,
-			Message: fmt.Sprintf("Validation failed: %v", validationErrors),
+			Message: "Input validation failed",
+			Errors:  validationErrors,
 		})
 		return false
 	}

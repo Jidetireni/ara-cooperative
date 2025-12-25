@@ -23,9 +23,9 @@ func NewRoleRepository(db *sqlx.DB) *RoleRepository {
 }
 
 type RoleRepositoryFilter struct {
-	ID         *uuid.UUID
-	Permission []string
-	UserID     *uuid.UUID
+	ID     *uuid.UUID
+	Name   []string
+	UserID *uuid.UUID
 }
 
 func (rr *RoleRepository) generateQuery(filter *RoleRepositoryFilter, queryType QueryType) (string, []interface{}, error) {
@@ -41,8 +41,8 @@ func (rr *RoleRepository) generateQuery(filter *RoleRepositoryFilter, queryType 
 		builder = builder.Where(sq.Eq{"r.id": filter.ID})
 	}
 
-	if len(filter.Permission) > 0 {
-		builder = builder.Where(sq.Eq{"r.permission": filter.Permission})
+	if len(filter.Name) > 0 {
+		builder = builder.Where(sq.Eq{"r.name": filter.Name})
 	}
 
 	if filter.UserID != nil {

@@ -9,25 +9,21 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
-	"github.com/google/uuid"
 )
 
 func (t *Transaction) ChargeRegistrationFee(ctx context.Context, input *dto.TransactionsInput) (*dto.Transactions, error) {
-	user := users.FromContext(ctx)
-	if user.ID == uuid.Nil {
-		return nil, &svc.ApiError{
-			Status:  http.StatusUnauthorized,
-			Message: "unauthenticated",
-		}
+	actor, ok := users.FromContext(ctx)
+	if !ok {
+		return nil, svc.UnauthenticatedError()
 	}
 
-	member, err := t.getMemberByUserID(ctx, user.ID)
+	member, err := t.getMemberByUserID(ctx, actor.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	if member.ActivatedAt.Valid {
-		return nil, &svc.ApiError{
+		return nil, &svc.APIError{
 			Status:  http.StatusBadRequest,
 			Message: "member already activated",
 		}

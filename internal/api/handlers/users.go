@@ -1,36 +1,26 @@
 package handlers
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
+	"github.com/Jidetireni/ara-cooperative/pkg/token"
 )
 
 func (h *Handlers) SetPassword(w http.ResponseWriter, r *http.Request) {
 	var input dto.SetPasswordInput
-	if input.Token == "" {
-		input.Token = r.URL.Query().Get("token")
-		if input.Token == "" {
-			h.errorResponse(w, r, &svc.ApiError{
-				Status:  http.StatusBadRequest,
-				Message: "token is required",
-			})
-			return
-		}
-	}
-
 	if !h.decodeAndValidate(w, r, &input) {
 		return
 	}
 
-	authResponse, err := h.factory.Services.User.SetPassword(r.Context(), w, &input)
+	authResponse, refreshToken, err := h.factory.Services.User.SetPassword(r.Context(), w, &input)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
 	}
 
+	setRefreshCookie(w, refreshToken, token.RefreshTokenExpirationTime, h.config.IsDev)
 	err = h.writeJSON(w, http.StatusCreated, authResponse, nil)
 	if err != nil {
 		h.errorResponse(w, r, err)
@@ -44,12 +34,13 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authResponse, err := h.factory.Services.User.Login(r.Context(), w, &input)
+	authResponse, refreshToken, err := h.factory.Services.User.Login(r.Context(), &input)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
 	}
 
+	setRefreshCookie(w, refreshToken, token.RefreshTokenExpirationTime, h.config.IsDev)
 	err = h.writeJSON(w, http.StatusOK, authResponse, nil)
 	if err != nil {
 		h.errorResponse(w, r, err)
@@ -58,27 +49,25 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("refresh_token")
-	log.Printf("refresh token cookie: %v", cookie)
+	cookie, err := r.Cookie(token.RefreshTokenName)
 	if err != nil {
-		log.Printf("error retrieving refresh token cookie: %v", err)
-		h.errorResponse(w, r, &svc.ApiError{
+		h.errorResponse(w, r, &svc.APIError{
 			Status:  http.StatusUnauthorized,
-			Message: "refresh token is required",
+			Message: "No refresh token provided",
 		})
 		return
 	}
 
-	refreshed, err := h.factory.Services.User.RefreshToken(r.Context(), w, cookie.Value)
+	resp, refreshToken, err := h.factory.Services.User.RefreshToken(r.Context(), cookie.Value)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
 	}
 
-	err = h.writeJSON(w, http.StatusOK, refreshed, nil)
+	setRefreshCookie(w, refreshToken, token.RefreshTokenExpirationTime, h.config.IsDev)
+	err = h.writeJSON(w, http.StatusOK, resp.AccessToken, nil)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
 	}
-
 }

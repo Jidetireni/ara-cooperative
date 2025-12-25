@@ -8,24 +8,24 @@ import (
 )
 
 type UserClaims struct {
-	ID      uuid.UUID `json:"id"`
-	Email   string    `json:"email"`
-	Roles   []string  `json:"roles"`
-	JwtType JWTType   `json:"jwt_type"`
+	ID          uuid.UUID `json:"id"`
+	Email       string    `json:"email"`
+	Roles       []string  `json:"roles"`
+	Permissions []string  `json:"scopes"`
 	jwt.RegisteredClaims
 }
 
-func NewUserClaims(params *CreatetokenParams) (*UserClaims, error) {
+func newUserClaims(params *CreatetokenParams) (*UserClaims, error) {
 	tokenID, err := uuid.NewRandom()
 	if err != nil {
 		return nil, err
 	}
 
 	return &UserClaims{
-		ID:      params.ID,
-		Email:   params.Email,
-		Roles:   params.Roles,
-		JwtType: params.JwtType,
+		ID:          params.ID,
+		Email:       params.Email,
+		Roles:       params.Roles,
+		Permissions: params.Permissions,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        tokenID.String(),
 			Subject:   params.Email,
