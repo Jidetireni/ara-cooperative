@@ -33,7 +33,7 @@ func (p *PermissionRepository) generateQuery(filter *PermissionRepositoryFilter,
 	case QueryTypeSelect:
 		builder = p.psql.Select("p.*").From("permissions p")
 	case QueryTypeCount:
-		builder = p.psql.Select("COUNT(p.*)").From("permissions p")
+		builder = p.psql.Select("COUNT(*)").From("permissions p")
 	}
 
 	if filter.ID != nil {
@@ -68,7 +68,10 @@ func (p *PermissionRepository) Get(ctx context.Context, filter *PermissionReposi
 }
 
 func (p *PermissionRepository) AssignToUser(ctx context.Context, userID *uuid.UUID, permissionIDs []uuid.UUID, tx *sqlx.Tx) error {
-	// Use an UPSERT to avoid duplicates without a separate check.
+	if len(permissionIDs) == 0 {
+		return nil
+	}
+
 	builder := p.psql.Insert("user_permissions").
 		Columns("user_id", "permission_id").
 		Suffix("ON CONFLICT (user_id, permission_id) DO NOTHING")
@@ -104,6 +107,10 @@ func (p *PermissionRepository) List(ctx context.Context, filter *PermissionRepos
 }
 
 func (p *PermissionRepository) RevokeFromUser(ctx context.Context, userID *uuid.UUID, permissionIDs []uuid.UUID, tx *sqlx.Tx) error {
+	if len(permissionIDs) == 0 {
+		return nil
+	}
+
 	builder := p.psql.Delete("user_permissions").
 		Where(sq.Eq{"user_id": userID}).
 		Where(sq.Eq{"permission_id": permissionIDs})

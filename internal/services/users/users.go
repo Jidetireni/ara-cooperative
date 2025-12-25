@@ -76,7 +76,7 @@ func New(db *sqlx.DB, cfg *config.Config, tokenPkg TokenPkg, userRepo UserReposi
 	}
 }
 
-func (u *User) SetPassword(ctx context.Context, w http.ResponseWriter, input *dto.SetPasswordInput) (*dto.AuthResponse, string, error) {
+func (u *User) SetPassword(ctx context.Context, input *dto.SetPasswordInput) (*dto.AuthResponse, string, error) {
 	incomingTokenHash := helpers.HashToken(input.Token)
 	tx, err := u.DB.BeginTxx(ctx, nil)
 	if err != nil {
@@ -111,8 +111,10 @@ func (u *User) SetPassword(ctx context.Context, w http.ResponseWriter, input *dt
 	}
 
 	err = u.TokenRepo.Update(ctx, &repository.Token{
-		UserID:  user.ID,
-		IsValid: false,
+		UserID:    user.ID,
+		IsValid:   false,
+		TokenType: token.SetPasswordToken,
+		ID:        storedToken.ID,
 	}, tx)
 	if err != nil {
 		return nil, "", err

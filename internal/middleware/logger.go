@@ -17,6 +17,7 @@ func (m *Middleware) LoggerMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(ww, r)
 
 		m.Logger.Info().
+			Str("request_id", middleware.GetReqID(r.Context())).
 			Str("method", r.Method).
 			Str("path", r.URL.Path).
 			Int("status", ww.Status()).

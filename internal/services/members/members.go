@@ -133,7 +133,7 @@ func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.M
 		return &dto.Member{}, err
 	}
 
-	expiresAt := time.Now().Add(15 * time.Minute)
+	expiresAt := time.Now().Add(30 * time.Minute)
 	_, err = m.TokenRepo.Create(ctx, &repository.Token{
 		UserID:    user.ID,
 		Token:     tokenHash,

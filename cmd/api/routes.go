@@ -3,10 +3,12 @@ package main
 import (
 	"github.com/Jidetireni/ara-cooperative/internal/constants"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 func (s *Server) router() {
 	s.Factory.Router.Route("/api/v1", func(r chi.Router) {
+		r.Use(middleware.RequestID)
 		r.Use(s.Factory.Middleware.LoggerMiddleware)
 
 		r.Get("/health", s.Handlers.HealthCheckHandler)
@@ -36,7 +38,7 @@ func (s *Server) router() {
 		r.Route("/savings", func(r chi.Router) {
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth)
-				r.Use(s.Factory.Middleware.RequireRole("member"))
+				r.Use(s.Factory.Middleware.RequireRole(constants.RoleMember))
 
 				r.Post("/", s.Handlers.DepositSavings)
 				r.Get("/me", s.Handlers.SavingsBalance)
@@ -99,7 +101,7 @@ func (s *Server) router() {
 		r.Route("/registration-fee", func(r chi.Router) {
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth)
-				r.Use(s.Factory.Middleware.RequireRole("member"))
+				r.Use(s.Factory.Middleware.RequireRole(constants.RoleAdmin))
 				r.Post("/", s.Handlers.PayRegistrationFee)
 			})
 		})

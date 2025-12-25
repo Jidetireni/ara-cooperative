@@ -14,7 +14,7 @@ func (h *Handlers) SetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authResponse, refreshToken, err := h.factory.Services.User.SetPassword(r.Context(), w, &input)
+	authResponse, refreshToken, err := h.factory.Services.User.SetPassword(r.Context(), &input)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return

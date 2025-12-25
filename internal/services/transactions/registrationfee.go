@@ -17,6 +17,13 @@ func (t *Transaction) ChargeRegistrationFee(ctx context.Context, input *dto.Tran
 		return nil, svc.UnauthenticatedError()
 	}
 
+	if input.Amount != DefaultRegistrationFee {
+		return nil, &svc.APIError{
+			Status:  http.StatusBadRequest,
+			Message: fmt.Sprintf("registration fee must be %d", DefaultRegistrationFee),
+		}
+	}
+
 	member, err := t.getMemberByUserID(ctx, actor.ID)
 	if err != nil {
 		return nil, err
@@ -33,9 +40,8 @@ func (t *Transaction) ChargeRegistrationFee(ctx context.Context, input *dto.Tran
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
+
+	defer tx.Rollback()
 
 	transaction, status, err := t.createTransactionWithStatus(
 		ctx,

@@ -21,7 +21,7 @@ type Seed struct {
 	DB              *database.PostgresDB
 	UserRepo        *repository.UserRepository
 	RolesRepo       *repository.RoleRepository
-	PermmissionRepo *repository.PermissionRepository
+	PermissionRepo  *repository.PermissionRepository
 	MemberRepo      *repository.MemberRepository
 	TokenRepo       *repository.TokenRepository
 	TransactionRepo *repository.TransactionRepository
@@ -42,7 +42,7 @@ func NewSeeder(cfg *config.Config) (*Seed, func(), error) {
 		DB:              fx.Pkgs.DB,
 		UserRepo:        fx.Repositories.User,
 		RolesRepo:       fx.Repositories.Role,
-		PermmissionRepo: fx.Repositories.Permission,
+		PermissionRepo:  fx.Repositories.Permission,
 		MemberRepo:      fx.Repositories.Member,
 		TokenRepo:       fx.Repositories.Token,
 		TransactionRepo: fx.Repositories.Transaction,
@@ -132,7 +132,7 @@ func (s *Seed) CreateRootUser() error {
 		return fmt.Errorf("no roles found; ensure roles are seeded before creating root user")
 	}
 
-	permissions, err := s.PermmissionRepo.List(ctx, &repository.PermissionRepositoryFilter{})
+	permissions, err := s.PermissionRepo.List(ctx, &repository.PermissionRepositoryFilter{})
 	if err != nil {
 		return fmt.Errorf("fetch permissions: %w", err)
 	}
@@ -185,7 +185,7 @@ func (s *Seed) CreateRootUser() error {
 		return p.ID
 	})
 
-	err = s.PermmissionRepo.AssignToUser(ctx, &createdUser.ID, permissionsIDs, tx)
+	err = s.PermissionRepo.AssignToUser(ctx, &createdUser.ID, permissionsIDs, tx)
 	if err != nil {
 		return fmt.Errorf("assign permissions to root user: %w", err)
 	}

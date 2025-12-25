@@ -56,13 +56,7 @@ func (m *Middleware) RequireRole(requiredRole string) func(http.Handler) http.Ha
 				return
 			}
 
-			hasRole := false
-			for _, role := range claims.Roles {
-				if role == requiredRole {
-					hasRole = true
-					break
-				}
-			}
+			hasRole := slices.Contains(claims.Roles, requiredRole)
 
 			if !hasRole {
 				m.apiError(w, "Forbidden: Insufficient permissions", http.StatusForbidden)
