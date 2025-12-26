@@ -35,7 +35,9 @@ func New(config *config.Config, logger *logger.Logger) (*Redis, func()) {
 	}
 
 	cleanUp := func() {
-		_ = redis.Close()
+		if err := redis.Close(); err != nil {
+			logger.Error().Err(err).Msg("failed to close redis client")
+		}
 	}
 
 	return redis, cleanUp

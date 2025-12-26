@@ -29,7 +29,7 @@ func (t *Transaction) SetSharesUnitPrice(ctx context.Context, input dto.SetShare
 	}
 	defer tx.Rollback()
 
-	err = t.ShareRepo.UpsertUnitPrice(ctx, input.UnitPrice, tx)
+	err = t.ShareRepo.CreateUnitPrice(ctx, input.UnitPrice, tx)
 	if err != nil {
 		return err
 	}

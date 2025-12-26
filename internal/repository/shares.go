@@ -220,7 +220,7 @@ func (s *ShareRepository) CountTotalSharesPurchased(ctx context.Context, filter 
 	return &total, nil
 }
 
-func (s *ShareRepository) UpsertUnitPrice(ctx context.Context, price int64, tx *sqlx.Tx) error {
+func (s *ShareRepository) CreateUnitPrice(ctx context.Context, price int64, tx *sqlx.Tx) error {
 	builder := s.psql.Insert("share_unit_prices").
 		Columns("price").
 		Values(price).

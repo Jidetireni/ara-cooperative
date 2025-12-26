@@ -47,7 +47,7 @@ type MemberRepository interface {
 type ShareRepository interface {
 	Create(ctx context.Context, share repository.Share, tx *sqlx.Tx) (*repository.Share, error)
 	CountTotalSharesPurchased(ctx context.Context, filter repository.ShareRepositoryFilter) (*repository.SharesTotalRows, error)
-	UpsertUnitPrice(ctx context.Context, price int64, tx *sqlx.Tx) error
+	CreateUnitPrice(ctx context.Context, price int64, tx *sqlx.Tx) error
 	GetUnitPrice(ctx context.Context) (int64, error)
 }
 
