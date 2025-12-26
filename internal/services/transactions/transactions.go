@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
@@ -72,10 +71,6 @@ type Transaction struct {
 	FineRepo        FineRepository
 	RedisPkg        RedisPkg
 	Logger          *logger.Logger
-
-	// Shares unit price management
-	mu        sync.RWMutex
-	unitPrice int64
 }
 
 func New(db *sqlx.DB, transRepo TransactionRepository, memberRepo MemberRepository, shareRepo ShareRepository, fineRepo FineRepository, redisPkg RedisPkg, logger *logger.Logger) *Transaction {
@@ -303,7 +298,7 @@ func (t *Transaction) GetSpecialDepositBalance(ctx context.Context) (int64, erro
 	return t.getBalance(ctx, repository.LedgerTypeSPECIALDEPOSIT)
 }
 
-func (t *Transaction) getBalance(ctx context.Context, legder repository.LedgerType) (int64, error) {
+func (t *Transaction) getBalance(ctx context.Context, ledger repository.LedgerType) (int64, error) {
 	actor, ok := users.FromContext(ctx)
 	if !ok {
 		return 0, svc.UnauthenticatedError()
@@ -320,7 +315,7 @@ func (t *Transaction) getBalance(ctx context.Context, legder repository.LedgerTy
 		MemberID:   &member.ID,
 		Type:       lo.ToPtr(repository.TransactionTypeDEPOSIT),
 		Confirmed:  lo.ToPtr(true),
-		LedgerType: lo.ToPtr(legder),
+		LedgerType: lo.ToPtr(ledger),
 	})
 	if err != nil {
 		return 0, err
@@ -330,7 +325,7 @@ func (t *Transaction) getBalance(ctx context.Context, legder repository.LedgerTy
 		MemberID:   &member.ID,
 		Type:       lo.ToPtr(repository.TransactionTypeWITHDRAWAL),
 		Confirmed:  lo.ToPtr(true),
-		LedgerType: lo.ToPtr(legder),
+		LedgerType: lo.ToPtr(ledger),
 	})
 	if err != nil {
 		return 0, err

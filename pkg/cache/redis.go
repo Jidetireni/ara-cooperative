@@ -16,7 +16,9 @@ type Redis struct {
 	Logger *logger.Logger
 }
 
-func New(config *config.Config, logger *logger.Logger) *Redis {
+var ErrCacheMiss = errors.New("cache miss")
+
+func New(config *config.Config, logger *logger.Logger) (*Redis, func()) {
 	ops, err := rds.ParseURL(config.Redis.URI)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to parse redis url")
@@ -32,11 +34,19 @@ func New(config *config.Config, logger *logger.Logger) *Redis {
 		logger.Fatal().Err(err).Msg("failed to ping redis")
 	}
 
-	return redis
+	cleanUp := func() {
+		_ = redis.Close()
+	}
+
+	return redis, cleanUp
 }
 
 func (r *Redis) Ping() error {
 	return r.Client.Ping(context.Background()).Err()
+}
+
+func (r *Redis) Close() error {
+	return r.Client.Close()
 }
 
 func (r *Redis) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
@@ -55,6 +65,7 @@ func (r *Redis) Get(ctx context.Context, key string, dest any) error {
 	if err != nil {
 		if errors.Is(err, rds.Nil) {
 			r.Logger.Debug().Str("key", key).Msg("cache miss")
+			return ErrCacheMiss
 		}
 		return err
 	}
@@ -73,6 +84,7 @@ func (r *Redis) GetPrimitive(ctx context.Context, key string) (string, error) {
 	if err != nil {
 		if errors.Is(err, rds.Nil) {
 			r.Logger.Debug().Str("key", key).Msg("primitive cache miss")
+			return "", ErrCacheMiss
 		}
 		return "", err
 	}

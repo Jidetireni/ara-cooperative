@@ -224,7 +224,7 @@ func (s *ShareRepository) UpsertUnitPrice(ctx context.Context, price int64, tx *
 	builder := s.psql.Insert("share_unit_prices").
 		Columns("price").
 		Values(price).
-		Suffix("ON CONFLICT (price) DO NOTHING")
+		Suffix("RETURNING *")
 
 	query, args, err := builder.ToSql()
 	if err != nil {

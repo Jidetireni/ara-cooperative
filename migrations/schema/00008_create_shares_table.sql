@@ -16,7 +16,7 @@ CREATE TABLE share_unit_prices (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX idx_share_unit_prices_price ON share_unit_prices(price);
+CREATE INDEX idx_share_unit_prices_price ON share_unit_prices(price);
 
 -- +goose Down
 DROP INDEX IF EXISTS idx_shares_transaction_id;

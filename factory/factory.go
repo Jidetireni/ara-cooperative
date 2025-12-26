@@ -50,7 +50,7 @@ type Factory struct {
 }
 
 func New(cfg *config.Config) (*Factory, func(), error) {
-	db, cleanup, err := database.New(cfg.Database.URL, cfg.Database.Type)
+	db, dbCleanUp, err := database.New(cfg.Database.URL, cfg.Database.Type)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -64,7 +64,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 
 	logger := logger.New(*cfg)
 
-	redis := cache.New(cfg, logger)
+	redis, cacheCleanUp := cache.New(cfg, logger)
 
 	userRepo := repository.NewUserRepository(db.DB)
 	memberRepo := repository.NewMemberRepository(db.DB)
@@ -134,6 +134,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 			},
 			Middleware: middleware,
 		}, func() {
-			cleanup()
+			dbCleanUp()
+			cacheCleanUp()
 		}, nil
 }

@@ -2,6 +2,8 @@ package transactions
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -56,6 +58,9 @@ func (t *Transaction) GetSharesUnitPrice(ctx context.Context) (int64, error) {
 
 	price, err := t.ShareRepo.GetUnitPrice(ctx)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return DefaultSharesUnitPrice, nil
+		}
 		return 0, err
 	}
 
@@ -69,9 +74,9 @@ func (t *Transaction) GetSharesUnitPrice(ctx context.Context) (int64, error) {
 	return price, nil
 }
 
-func (t *Transaction) calculateShareQuote(ctx context.Context, amount int64) (float64, int64, error) {
+func (t *Transaction) calculateShareQuote(ctx context.Context, amount int64) (*calculateShareQuoteResult, error) {
 	if amount <= 0 {
-		return 0, 0, &svc.APIError{
+		return nil, &svc.APIError{
 			Status:  http.StatusBadRequest,
 			Message: "amount must be positive",
 		}
@@ -79,11 +84,11 @@ func (t *Transaction) calculateShareQuote(ctx context.Context, amount int64) (fl
 
 	unitPrice, err := t.GetSharesUnitPrice(ctx)
 	if err != nil {
-		return 0, 0, err
+		return nil, err
 	}
 
 	if unitPrice <= 0 {
-		return 0, 0, &svc.APIError{
+		return nil, &svc.APIError{
 			Status:  http.StatusServiceUnavailable,
 			Message: "unit price is not currently set",
 		}
@@ -94,24 +99,23 @@ func (t *Transaction) calculateShareQuote(ctx context.Context, amount int64) (fl
 	remainder := amount - spent
 	unitsFloat := float64(scaledUnit) / SharePrecisionScale
 
-	return unitsFloat, remainder, nil
+	return &calculateShareQuoteResult{
+		unitsFloat: unitsFloat,
+		remainder:  remainder,
+		unitPrice:  unitPrice,
+	}, nil
 }
 
 func (t *Transaction) GetShareQuote(ctx context.Context, amount int64) (*dto.GetUnitsQuote, error) {
-	units, remainder, err := t.calculateShareQuote(ctx, amount)
-	if err != nil {
-		return nil, err
-	}
-
-	unitPrice, err := t.GetSharesUnitPrice(ctx)
+	result, err := t.calculateShareQuote(ctx, amount)
 	if err != nil {
 		return nil, err
 	}
 
 	return &dto.GetUnitsQuote{
-		Units:     units,
-		Remainder: remainder,
-		UnitPrice: unitPrice,
+		Units:     result.unitsFloat,
+		Remainder: result.remainder,
+		UnitPrice: result.unitPrice,
 	}, nil
 }
 
@@ -132,11 +136,11 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 		}
 	}
 
-	unitsFloat, _, err := t.calculateShareQuote(ctx, input.Amount)
+	result, err := t.calculateShareQuote(ctx, input.Amount)
 	if err != nil {
 		return nil, err
 	}
-	if unitsFloat <= 0 {
+	if result.unitsFloat <= 0 {
 		return nil, &svc.APIError{
 			Status:  http.StatusBadRequest,
 			Message: "amount is too small to purchase any shares",
@@ -157,7 +161,7 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 	transaction, status, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
 		Input: dto.TransactionsInput{
 			Amount:      input.Amount,
-			Description: fmt.Sprintf("Purchase of %f shares", unitsFloat),
+			Description: fmt.Sprintf("Purchase of %f shares", result.unitsFloat),
 		},
 		Type:       repository.TransactionTypeDEPOSIT,
 		LedgerType: repository.LedgerTypeSHARES,
@@ -168,7 +172,7 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 
 	shares, err := t.ShareRepo.Create(ctx, repository.Share{
 		TransactionID: transaction.ID,
-		Units:         fmt.Sprintf("%4f", unitsFloat),
+		Units:         fmt.Sprintf("%.4f", result.unitsFloat),
 		UnitPrice:     unitPrice,
 	}, tx)
 	if err != nil {

@@ -33,3 +33,9 @@ type BalanceFilter struct {
 	LedgerType repository.LedgerType
 	Type       *repository.TransactionType
 }
+
+type calculateShareQuoteResult struct {
+	unitsFloat float64
+	remainder  int64
+	unitPrice  int64
+}
