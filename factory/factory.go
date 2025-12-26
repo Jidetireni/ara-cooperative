@@ -8,6 +8,7 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/services/transactions"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 
+	"github.com/Jidetireni/ara-cooperative/pkg/cache"
 	"github.com/Jidetireni/ara-cooperative/pkg/database"
 	emailpkg "github.com/Jidetireni/ara-cooperative/pkg/email"
 	"github.com/Jidetireni/ara-cooperative/pkg/logger"
@@ -37,6 +38,7 @@ type Packages struct {
 	Email  *emailpkg.Email
 	JWTTok *token.Jwt
 	Logger *logger.Logger
+	Cache  *cache.Redis
 }
 
 type Factory struct {
@@ -48,7 +50,7 @@ type Factory struct {
 }
 
 func New(cfg *config.Config) (*Factory, func(), error) {
-	db, cleanup, err := database.New(cfg.Database.URL, cfg.Database.Type)
+	db, dbCleanUp, err := database.New(cfg.Database.URL, cfg.Database.Type)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -61,6 +63,8 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 	}
 
 	logger := logger.New(*cfg)
+
+	redis, cacheCleanUp := cache.New(cfg, logger)
 
 	userRepo := repository.NewUserRepository(db.DB)
 	memberRepo := repository.NewMemberRepository(db.DB)
@@ -98,6 +102,8 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		memberRepo,
 		shareRepo,
 		fineRepo,
+		redis,
+		logger,
 	)
 
 	middleware := middleware.New(jwtToken, logger)
@@ -109,6 +115,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 				Email:  email,
 				JWTTok: jwtToken,
 				Logger: logger,
+				Cache:  redis,
 			},
 			Services: &Services{
 				Member:       membersService,
@@ -127,6 +134,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 			},
 			Middleware: middleware,
 		}, func() {
-			cleanup()
+			dbCleanUp()
+			cacheCleanUp()
 		}, nil
 }

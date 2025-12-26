@@ -4,8 +4,6 @@ import (
 	"net/http"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
-	"github.com/Jidetireni/ara-cooperative/internal/repository"
-	"github.com/Jidetireni/ara-cooperative/internal/services/transactions"
 )
 
 func (h *Handlers) DepositSavings(w http.ResponseWriter, r *http.Request) {
@@ -14,14 +12,7 @@ func (h *Handlers) DepositSavings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	saving, err := h.factory.Services.Transactions.CreateTransaction(
-		r.Context(),
-		transactions.TransactionParams{
-			Input:      input,
-			Type:       repository.TransactionTypeDEPOSIT,
-			LedgerType: repository.LedgerTypeSAVINGS,
-		},
-	)
+	saving, err := h.factory.Services.Transactions.DepositSavings(r.Context(), input)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
@@ -31,10 +22,7 @@ func (h *Handlers) DepositSavings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) SavingsBalance(w http.ResponseWriter, r *http.Request) {
-	balance, err := h.factory.Services.Transactions.GetBalance(
-		r.Context(),
-		repository.LedgerTypeSAVINGS,
-	)
+	balance, err := h.factory.Services.Transactions.GetSavingsBalance(r.Context())
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return

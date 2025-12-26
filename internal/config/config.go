@@ -28,9 +28,14 @@ type EmailConfig struct {
 	Password string
 }
 
+type RedisConfig struct {
+	URI string
+}
+
 type Config struct {
 	Server   ServerConfig
 	Database DataBaseConfig
+	Redis    RedisConfig
 	Auth     AuthConfig
 	Email    EmailConfig
 	IsDev    bool
@@ -51,6 +56,8 @@ func validateEnv() {
 		"JWT_SECRET",
 		// email
 		"EMAIL_PASSWORD",
+		// redis
+		"REDIS_URI",
 	}
 	for _, env := range environmentVariables {
 		if os.Getenv(env) == "" {
@@ -84,6 +91,9 @@ func New() *Config {
 		},
 		Email: EmailConfig{
 			Password: os.Getenv("EMAIL_PASSWORD"),
+		},
+		Redis: RedisConfig{
+			URI: os.Getenv("REDIS_URI"),
 		},
 
 		IsDev: os.Getenv("ENV") == "development",
