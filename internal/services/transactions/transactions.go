@@ -12,6 +12,8 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
+	"github.com/Jidetireni/ara-cooperative/pkg/cache"
+	"github.com/Jidetireni/ara-cooperative/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
@@ -22,6 +24,10 @@ var (
 	_ MemberRepository      = (*repository.MemberRepository)(nil)
 	_ ShareRepository       = (*repository.ShareRepository)(nil)
 	_ FineRepository        = (*repository.FineRepository)(nil)
+)
+
+var (
+	_ RedisPkg = (*cache.Redis)(nil)
 )
 
 type TransactionRepository interface {
@@ -42,6 +48,8 @@ type MemberRepository interface {
 type ShareRepository interface {
 	Create(ctx context.Context, share repository.Share, tx *sqlx.Tx) (*repository.Share, error)
 	CountTotalSharesPurchased(ctx context.Context, filter repository.ShareRepositoryFilter) (*repository.SharesTotalRows, error)
+	UpsertUnitPrice(ctx context.Context, price int64, tx *sqlx.Tx) error
+	GetUnitPrice(ctx context.Context) (int64, error)
 }
 
 type FineRepository interface {
@@ -50,25 +58,35 @@ type FineRepository interface {
 	Update(ctx context.Context, fine *repository.Fine, tx *sqlx.Tx) (*repository.Fine, error)
 }
 
+type RedisPkg interface {
+	SetPrimitive(ctx context.Context, key string, value string, expiration time.Duration) error
+	GetPrimitive(ctx context.Context, key string) (string, error)
+	Delete(ctx context.Context, key string) error
+}
+
 type Transaction struct {
 	DB              *sqlx.DB
 	TransactionRepo TransactionRepository
 	MemberRepo      MemberRepository
 	ShareRepo       ShareRepository
 	FineRepo        FineRepository
+	RedisPkg        RedisPkg
+	Logger          *logger.Logger
 
 	// Shares unit price management
 	mu        sync.RWMutex
 	unitPrice int64
 }
 
-func New(db *sqlx.DB, transRepo TransactionRepository, memberRepo MemberRepository, shareRepo ShareRepository, fineRepo FineRepository) *Transaction {
+func New(db *sqlx.DB, transRepo TransactionRepository, memberRepo MemberRepository, shareRepo ShareRepository, fineRepo FineRepository, redisPkg RedisPkg, logger *logger.Logger) *Transaction {
 	return &Transaction{
 		DB:              db,
 		TransactionRepo: transRepo,
 		MemberRepo:      memberRepo,
 		ShareRepo:       shareRepo,
 		FineRepo:        fineRepo,
+		RedisPkg:        redisPkg,
+		Logger:          logger,
 	}
 }
 
@@ -188,7 +206,29 @@ func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dt
 
 // TODO: integrate a payment platform here but for now it would be manual
 // CreateTransaction creates a generic transaction with status tracking
-func (t *Transaction) CreateTransaction(ctx context.Context, params TransactionParams) (*dto.Transactions, error) {
+func (t *Transaction) DepositSavings(ctx context.Context, input dto.TransactionsInput) (*dto.Transactions, error) {
+	if input.Amount < MinSavingsDepositAmount {
+		return nil, &svc.APIError{
+			Status:  http.StatusBadRequest,
+			Message: "minimum savings deposit amount is NGN 100",
+		}
+	}
+
+	return t.processDeposit(ctx, input, repository.LedgerTypeSAVINGS)
+}
+
+func (t *Transaction) DepositSpecial(ctx context.Context, input dto.TransactionsInput) (*dto.Transactions, error) {
+	if input.Amount < MinSpecialDepositAmount {
+		return nil, &svc.APIError{
+			Status:  http.StatusBadRequest,
+			Message: "minimum special deposit amount is NGN 500",
+		}
+	}
+
+	return t.processDeposit(ctx, input, repository.LedgerTypeSPECIALDEPOSIT)
+}
+
+func (t *Transaction) processDeposit(ctx context.Context, input dto.TransactionsInput, ledger repository.LedgerType) (*dto.Transactions, error) {
 	actor, ok := users.FromContext(ctx)
 	if !ok {
 		return nil, svc.UnauthenticatedError()
@@ -203,11 +243,13 @@ func (t *Transaction) CreateTransaction(ctx context.Context, params TransactionP
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
 
-	transaction, status, err := t.createTransactionWithStatus(ctx, member.ID, params, tx)
+	defer tx.Rollback()
+	transaction, status, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
+		Input:      input,
+		Type:       repository.TransactionTypeDEPOSIT,
+		LedgerType: ledger,
+	}, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -253,13 +295,18 @@ func (t *Transaction) createTransactionWithStatus(ctx context.Context, memberID 
 	return transaction, status, nil
 }
 
-func (t *Transaction) GetBalance(ctx context.Context, legder repository.LedgerType) (int64, error) {
+func (t *Transaction) GetSavingsBalance(ctx context.Context) (int64, error) {
+	return t.getBalance(ctx, repository.LedgerTypeSAVINGS)
+}
+
+func (t *Transaction) GetSpecialDepositBalance(ctx context.Context) (int64, error) {
+	return t.getBalance(ctx, repository.LedgerTypeSPECIALDEPOSIT)
+}
+
+func (t *Transaction) getBalance(ctx context.Context, legder repository.LedgerType) (int64, error) {
 	actor, ok := users.FromContext(ctx)
 	if !ok {
-		return 0, &svc.APIError{
-			Status:  http.StatusUnauthorized,
-			Message: "unauthenticated",
-		}
+		return 0, svc.UnauthenticatedError()
 	}
 
 	member, err := t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{

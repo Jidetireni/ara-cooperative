@@ -219,3 +219,42 @@ func (s *ShareRepository) CountTotalSharesPurchased(ctx context.Context, filter 
 
 	return &total, nil
 }
+
+func (s *ShareRepository) UpsertUnitPrice(ctx context.Context, price int64, tx *sqlx.Tx) error {
+	builder := s.psql.Insert("share_unit_prices").
+		Columns("price").
+		Values(price).
+		Suffix("ON CONFLICT (price) DO NOTHING")
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return err
+	}
+
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, query, args...)
+		return err
+	}
+
+	_, err = s.db.ExecContext(ctx, query, args...)
+	return err
+}
+
+func (s *ShareRepository) GetUnitPrice(ctx context.Context) (int64, error) {
+	builder := s.psql.Select("price").
+		From("share_unit_prices").
+		OrderBy("created_at DESC").
+		Limit(1)
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return 0, err
+	}
+
+	var price int64
+	if err := s.db.GetContext(ctx, &price, query, args...); err != nil {
+		return 0, err
+	}
+
+	return price, nil
+}

@@ -1,6 +1,8 @@
 package transactions
 
 import (
+	"time"
+
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	"github.com/google/uuid"
@@ -9,6 +11,13 @@ import (
 const (
 	DefaultSharesUnitPrice int64 = 50000
 	DefaultRegistrationFee int64 = 100000
+
+	MinSavingsDepositAmount int64 = 10000
+	MinSpecialDepositAmount int64 = 50000
+
+	SharesUnitPriceRedisKey = "shares_unit_price"
+	SharesUnitPriceCacheTTL = time.Hour * 24 * 7
+	SharePrecisionScale     = 1e4
 )
 
 // TransactionParams contains parameters for creating transactions

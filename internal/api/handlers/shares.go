@@ -6,10 +6,8 @@ import (
 
 	"github.com/Jidetireni/ara-cooperative/internal/constants"
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
-	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
-	"github.com/samber/lo"
 )
 
 func (h *Handlers) SetShareUnitPrice(w http.ResponseWriter, r *http.Request) {
@@ -25,58 +23,52 @@ func (h *Handlers) SetShareUnitPrice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.factory.Services.Transactions.SetSharesUnitPrice(r.Context(), input)
+	err := h.factory.Services.Transactions.SetSharesUnitPrice(r.Context(), input)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
 	}
-	h.writeJSON(w, http.StatusOK, map[string]string{"message": "updated successfully"}, nil)
+
+	h.writeJSON(w, http.StatusOK, map[string]bool{"success": true}, nil)
 }
 
 // GetShareUnitPrice returns the current unit price.
 func (h *Handlers) GetShareUnitPrice(w http.ResponseWriter, r *http.Request) {
-	price := h.factory.Services.Transactions.GetSharesUnitPrice(r.Context())
-	h.writeJSON(w, http.StatusOK, map[string]int64{"unit_price": price}, nil)
+	unitPrice, err := h.factory.Services.Transactions.GetSharesUnitPrice(r.Context())
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]int64{"unit_price": unitPrice}, nil)
 }
 
 func (h *Handlers) GetShareQuote(w http.ResponseWriter, r *http.Request) {
-	if q := r.URL.Query().Get("amount"); q != "" {
-		amount, err := strconv.ParseInt(q, 10, 64)
-		if err != nil || amount <= 0 {
-			h.errorResponse(w, r, &svc.APIError{
-				Status:  http.StatusBadRequest,
-				Message: "amount must be a positive integer",
-			})
-			return
-		}
-
-		unitPrice := h.factory.Services.Transactions.GetSharesUnitPrice(r.Context())
-		if unitPrice <= 0 {
-			h.errorResponse(w, r, &svc.APIError{
-				Status:  http.StatusServiceUnavailable,
-				Message: "unit price is not set",
-			})
-			return
-		}
-
-		scaledUnit := (amount * 1e4) / unitPrice
-		unitsFloat := float64(scaledUnit) / 1e4
-		spent := (scaledUnit * unitPrice) / 1e4
-		remainder := amount - spent
-
-		h.writeJSON(w, http.StatusOK, dto.GetUnitsQuote{
-			Units:     unitsFloat,
-			Remainder: remainder,
-			UnitPrice: unitPrice,
-		}, nil)
-		return
-	} else {
+	q := r.URL.Query().Get("amount")
+	if q == "" {
 		h.errorResponse(w, r, &svc.APIError{
 			Status:  http.StatusBadRequest,
 			Message: "amount query parameter is required",
 		})
 		return
 	}
+
+	amount, err := strconv.ParseInt(q, 10, 64)
+	if err != nil {
+		h.errorResponse(w, r, &svc.APIError{
+			Status:  http.StatusBadRequest,
+			Message: "amount must be a valid integer",
+		})
+		return
+	}
+
+	quote, err := h.factory.Services.Transactions.GetShareQuote(r.Context(), amount)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, quote, nil)
 }
 
 func (h *Handlers) BuyShares(w http.ResponseWriter, r *http.Request) {
@@ -102,69 +94,21 @@ func (h *Handlers) GetTotalSharesPurchased(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	filters := repository.ShareRepositoryFilter{
-		Confirmed:  lo.ToPtr(true),
-		Rejected:   lo.ToPtr(false),
-		Type:       lo.ToPtr(repository.TransactionTypeDEPOSIT),
-		LedgerType: repository.LedgerTypeSHARES,
-	}
-
-	total, err := h.factory.Repositories.Share.CountTotalSharesPurchased(r.Context(), filters)
+	total, err := h.factory.Services.Transactions.GetTotalShares(r.Context())
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
 	}
 
-	units, err := strconv.ParseFloat(total.Units, 64)
-	if err != nil {
-		h.errorResponse(w, r, err)
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, dto.SharesTotal{
-		Units:  units,
-		Amount: total.Amount,
-	}, nil)
-
+	h.writeJSON(w, http.StatusOK, total, nil)
 }
 
 func (h *Handlers) GetMemberTotalSharesPurchased(w http.ResponseWriter, r *http.Request) {
-	actor, ok := users.FromContext(r.Context())
-	if !ok {
-		h.errorResponse(w, r, svc.UnauthenticatedError())
-		return
-	}
-
-	member, err := h.factory.Repositories.Member.Get(r.Context(), repository.MemberRepositoryFilter{
-		UserID: &actor.ID,
-	})
+	total, err := h.factory.Services.Transactions.GetMemberTotalShares(r.Context())
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
 	}
 
-	filters := repository.ShareRepositoryFilter{
-		Confirmed:  lo.ToPtr(true),
-		Rejected:   lo.ToPtr(false),
-		Type:       lo.ToPtr(repository.TransactionTypeDEPOSIT),
-		MemberID:   &member.ID,
-		LedgerType: repository.LedgerTypeSHARES,
-	}
-
-	total, err := h.factory.Repositories.Share.CountTotalSharesPurchased(r.Context(), filters)
-	if err != nil {
-		h.errorResponse(w, r, err)
-		return
-	}
-
-	units, err := strconv.ParseFloat(total.Units, 64)
-	if err != nil {
-		h.errorResponse(w, r, err)
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, dto.SharesTotal{
-		Units:  units,
-		Amount: total.Amount,
-	}, nil)
+	h.writeJSON(w, http.StatusOK, total, nil)
 }
