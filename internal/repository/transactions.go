@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"time"
 
+	"github.com/Jidetireni/ara-cooperative/internal/dto"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -285,4 +287,121 @@ func (s *TransactionRepository) UpdateStatus(ctx context.Context, transactionSta
 
 	err = s.db.GetContext(ctx, &updatedTransactionStatus, query, args...)
 	return &updatedTransactionStatus, err
+}
+
+func (t *TransactionRepository) MapPopTransactionToDTO(pop *PopTransaction) *dto.Transactions {
+	if pop == nil {
+		return nil
+	}
+
+	status := dto.TransactionStatusTypePending
+	if pop.ConfirmedAt.Valid {
+		status = dto.TransactionStatusTypeConfirmed
+	} else if pop.RejectedAt.Valid {
+		status = dto.TransactionStatusTypeRejected
+	}
+
+	var createdAt time.Time
+	if pop.CreatedAt.Valid {
+		createdAt = pop.CreatedAt.Time
+	}
+
+	return &dto.Transactions{
+		ID:          pop.ID,
+		MemberID:    pop.MemberID,
+		Description: pop.Description,
+		Reference:   pop.Reference,
+		Amount:      pop.Amount,
+		Type:        *t.mapTypeToDTO(&pop.Type),
+		LedgerType:  *t.mapLedgerToDTO(&pop.LedgerType),
+		Status: dto.TransactionStatus{
+			ID:          pop.StatusID,
+			Status:      status,
+			ConfirmedAt: &pop.ConfirmedAt.Time,
+			RejectedAt:  &pop.RejectedAt.Time,
+		},
+		CreatedAt: createdAt,
+	}
+}
+
+func (t *TransactionRepository) MapRepositoryToDTO(txn *Transaction, status *TransactionStatus) *dto.Transactions {
+	if txn != nil {
+		createdAt := status.CreatedAt.Time
+		dto := &dto.Transactions{
+			ID:          txn.ID,
+			MemberID:    txn.MemberID,
+			Description: txn.Description,
+			Reference:   txn.Reference,
+			Amount:      txn.Amount,
+			Type:        *t.mapTypeToDTO(&txn.Type),
+			LedgerType:  *t.mapLedgerToDTO(&txn.Ledger),
+			CreatedAt:   createdAt,
+		}
+		if status != nil {
+			dto.Status = *t.mapStatusToDTO(status)
+		}
+		return dto
+	}
+
+	return nil
+}
+
+func (t *TransactionRepository) mapTypeToDTO(txnType *TransactionType) *dto.TransactionType {
+	if txnType != nil {
+		var dtoTxnType dto.TransactionType
+		switch *txnType {
+		case TransactionTypeDEPOSIT:
+			dtoTxnType = dto.TransactionTypeDeposit
+		case TransactionTypeWITHDRAWAL:
+			dtoTxnType = dto.TransactionTypeWithdrawal
+		default:
+			dtoTxnType = dto.TransactionTypeDeposit
+		}
+
+		return &dtoTxnType
+	}
+	return nil
+}
+
+func (t *TransactionRepository) mapLedgerToDTO(ledgerType *LedgerType) *dto.LedgerType {
+	if ledgerType != nil {
+		var dtoLedgerType dto.LedgerType
+		switch *ledgerType {
+		case LedgerTypeSAVINGS:
+			dtoLedgerType = dto.LedgerTypeSAVINGS
+		case LedgerTypeSPECIALDEPOSIT:
+			dtoLedgerType = dto.LedgerTypeSPECIALDEPOSIT
+		case LedgerTypeSHARES:
+			dtoLedgerType = dto.LedgerTypeSHARES
+		case LedgerTypeFINES:
+			dtoLedgerType = dto.LedgerTypeFINES
+		case LedgerTypeREGISTRATIONFEE:
+			dtoLedgerType = dto.LedgerTypeREGISTRATIONFEE
+		default:
+			dtoLedgerType = dto.LedgerTypeSAVINGS
+		}
+
+		return &dtoLedgerType
+	}
+	return nil
+}
+
+func (t *TransactionRepository) mapStatusToDTO(status *TransactionStatus) *dto.TransactionStatus {
+	if status != nil {
+		DTOStatus := dto.TransactionStatusTypePending
+		if status.ConfirmedAt.Valid {
+			DTOStatus = dto.TransactionStatusTypeConfirmed
+		} else if status.RejectedAt.Valid {
+			DTOStatus = dto.TransactionStatusTypeRejected
+		}
+
+		return &dto.TransactionStatus{
+			ID:          status.ID,
+			Status:      DTOStatus,
+			ConfirmedAt: &status.ConfirmedAt.Time,
+			RejectedAt:  &status.RejectedAt.Time,
+		}
+	}
+
+	return nil
 }

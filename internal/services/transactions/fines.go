@@ -12,6 +12,7 @@ import (
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 )
 
 func (t *Transaction) ChargeFine(ctx context.Context, input *dto.FineInput) (*dto.Fine, error) {
@@ -20,44 +21,37 @@ func (t *Transaction) ChargeFine(ctx context.Context, input *dto.FineInput) (*dt
 		return nil, svc.UnauthenticatedError()
 	}
 
-	// Ensure member exists (avoid FK violation)
-	_, err := t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{ID: &input.MemberID})
+	_, err := t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{
+		ID: &input.MemberID,
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, &svc.APIError{Status: http.StatusNotFound, Message: "member not found"}
+			return nil, svc.ErrNotFound()
 		}
 		return nil, err
 	}
 
-	// Parse deadline (RFC3339 string)
-	deadline, err := time.Parse(time.RFC3339, input.Deadline)
-	if err != nil {
+	if input.Deadline.Before(time.Now()) {
 		return nil, &svc.APIError{
 			Status:  http.StatusBadRequest,
-			Message: "invalid deadline format (use RFC3339)",
+			Message: "deadline must be a future date",
 		}
 	}
 
-	created, err := t.FineRepo.Create(ctx, &repository.Fine{
+	fine, err := t.FineRepo.Create(ctx, &repository.Fine{
 		AdminID:  actor.ID,
 		MemberID: input.MemberID,
 		Amount:   input.Amount,
 		Reason:   input.Reason,
-		Deadline: deadline,
+		Deadline: input.Deadline,
 	}, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return &dto.Fine{
-		ID:        created.ID,
-		MemberID:  created.MemberID,
-		Amount:    created.Amount,
-		Reason:    created.Reason,
-		Deadline:  created.Deadline,
-		Paid:      created.PaidAt.Valid,
-		CreatedAt: created.CreatedAt,
-	}, nil
+	// TODO: Send notification to member about the fine charged
+
+	return t.FineRepo.MapRepositoryToDTO(fine, nil, nil), nil
 }
 
 func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dto.TransactionsInput) (*dto.Fine, error) {
@@ -71,16 +65,19 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 		return nil, err
 	}
 
+	tx, err := t.DB.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	fine, err := t.FineRepo.Get(ctx, repository.FineRepositoryFilter{
 		ID:       &fineID,
 		MemberID: &member.ID,
-	})
+	}, tx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, &svc.APIError{
-				Status:  http.StatusNotFound,
-				Message: "fine not found",
-			}
+			return nil, svc.ErrNotFound()
 		}
 		return nil, err
 	}
@@ -104,15 +101,6 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 		description = txInput.Description
 	}
 
-	tx, err := t.DB.BeginTxx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
 	createdTxn, status, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
 		Input: dto.TransactionsInput{
 			Amount:      fine.Amount,
@@ -125,35 +113,58 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 		return nil, err
 	}
 
-	updatedFine, err := t.FineRepo.Update(ctx, &repository.Fine{
-		ID:            fine.ID,
-		MemberID:      fine.MemberID,
-		AdminID:       fine.AdminID,
-		Amount:        fine.Amount,
-		TransactionID: repository.ToNullUUID(createdTxn.ID),
-		Reason:        fine.Reason,
-		Deadline:      fine.Deadline,
-		PaidAt: sql.NullTime{
-			Time:  time.Now(),
-			Valid: true,
-		},
-	}, tx)
-	if err != nil {
-		return nil, err
-	}
-
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
-	return &dto.Fine{
-		ID:          fine.ID,
-		MemberID:    fine.MemberID,
-		Amount:      fine.Amount,
-		Transaction: t.MapRepositoryToDTO(createdTxn, status),
-		Reason:      fine.Reason,
-		Deadline:    fine.Deadline,
-		Paid:        updatedFine.PaidAt.Valid,
-		CreatedAt:   fine.CreatedAt,
+	return t.FineRepo.MapRepositoryToDTO(fine, createdTxn, status), nil
+}
+
+func (t *Transaction) ListFines(ctx context.Context, filters *dto.FineFilter, options *dto.QueryOptions) (*dto.ListResponse[dto.Fine], error) {
+	actor, ok := users.FromContext(ctx)
+	if !ok {
+		return nil, svc.UnauthenticatedError()
+	}
+
+	repoFilters := repository.FineRepositoryFilter{
+		Paid: filters.Paid,
+	}
+
+	if actor.IsAuthenticatedAsAdmin {
+		if filters.MemberID != nil {
+			repoFilters.MemberID = filters.MemberID
+		}
+	} else {
+		memberID, err := t.getMemberByUserID(ctx, actor.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		if filters.MemberID != nil && *filters.MemberID != memberID.ID {
+			return nil, &svc.APIError{
+				Status:  http.StatusForbidden,
+				Message: "cannot access fines of other members",
+			}
+		}
+
+		repoFilters.MemberID = &memberID.ID
+	}
+
+	result, err := t.FineRepo.List(ctx, repoFilters, repository.QueryOptions{
+		Limit:  options.Limit,
+		Cursor: options.Cursor,
+		Sort:   options.Sort,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	dtoItems := lo.Map(result.Items, func(item *repository.Fine, _ int) dto.Fine {
+		return *t.FineRepo.MapRepositoryToDTO(item, nil, nil)
+	})
+
+	return &dto.ListResponse[dto.Fine]{
+		Items:      dtoItems,
+		NextCursor: result.NextCursor,
 	}, nil
 }

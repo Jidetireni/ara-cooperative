@@ -183,12 +183,7 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 		return nil, err
 	}
 
-	return t.MapPopShareToDTO(&repository.PopShare{
-		ID:            shares.ID,
-		TransactionID: shares.TransactionID,
-		Units:         shares.Units,
-		UnitPrice:     shares.UnitPrice,
-	}, transaction, status)
+	return t.ShareRepo.MapRepositoryToDTO(shares, transaction, status), nil
 }
 
 func (t *Transaction) GetTotalShares(ctx context.Context) (*dto.SharesTotal, error) {
@@ -241,20 +236,5 @@ func (t *Transaction) calculateShareTotals(ctx context.Context, filters reposito
 	return &dto.SharesTotal{
 		Units:  units,
 		Amount: total.Amount,
-	}, nil
-}
-
-func (t *Transaction) MapPopShareToDTO(share *repository.PopShare, txn *repository.Transaction, status *repository.TransactionStatus) (*dto.Shares, error) {
-	units, err := strconv.ParseFloat(share.Units, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid share units: %w", err)
-	}
-
-	return &dto.Shares{
-		ID:          share.ID,
-		Transaction: *t.MapRepositoryToDTO(txn, status),
-		Units:       units,
-		UnitPrice:   share.UnitPrice,
-		CreatedAt:   share.CreatedAt,
 	}, nil
 }

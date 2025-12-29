@@ -49,3 +49,45 @@ func (h *Handlers) PayFine(w http.ResponseWriter, r *http.Request) {
 
 	h.writeJSON(w, http.StatusOK, fine, nil)
 }
+
+func (h *Handlers) ListMyFines(w http.ResponseWriter, r *http.Request) {
+	filters, err := h.parseFineFilters(r)
+	if err != nil {
+		h.errorResponse(w, r, &svc.APIError{
+			Status:  http.StatusBadRequest,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	options := h.getPaginationParams(r)
+
+	fines, err := h.factory.Services.Transactions.ListFines(r.Context(), &filters, options)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, fines, nil)
+}
+
+// For Admins: GET /fines/admin?member_id=...
+func (h *Handlers) ListAllFines(w http.ResponseWriter, r *http.Request) {
+	filters, err := h.parseFineFilters(r)
+	if err != nil {
+		h.errorResponse(w, r, &svc.APIError{
+			Status:  http.StatusBadRequest,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	options := h.getPaginationParams(r)
+
+	fines, err := h.factory.Services.Transactions.ListFines(r.Context(), &filters, options)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, fines, nil)
+}

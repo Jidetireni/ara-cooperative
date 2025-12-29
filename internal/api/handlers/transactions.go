@@ -86,7 +86,7 @@ func (h *Handlers) ListPendingTransactions(w http.ResponseWriter, r *http.Reques
 	}
 
 	dtoItems := lo.Map(result.Items, func(item *repository.PopTransaction, _ int) dto.Transactions {
-		return *h.factory.Services.Transactions.MapPopTransactionToDTO(item)
+		return *h.factory.Repositories.Transaction.MapPopTransactionToDTO(item)
 	})
 
 	h.writeJSON(w, http.StatusOK, dto.ListResponse[dto.Transactions]{

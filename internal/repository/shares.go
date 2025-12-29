@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"strconv"
 	"time"
 
+	"github.com/Jidetireni/ara-cooperative/internal/dto"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -12,14 +14,16 @@ import (
 )
 
 type ShareRepository struct {
-	db   *sqlx.DB
-	psql sq.StatementBuilderType
+	db          *sqlx.DB
+	psql        sq.StatementBuilderType
+	transaction *TransactionRepository
 }
 
-func NewShareRepository(db *sqlx.DB) *ShareRepository {
+func NewShareRepository(db *sqlx.DB, transactionRepo *TransactionRepository) *ShareRepository {
 	return &ShareRepository{
-		db:   db,
-		psql: sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
+		db:          db,
+		psql:        sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
+		transaction: transactionRepo,
 	}
 }
 
@@ -257,4 +261,19 @@ func (s *ShareRepository) GetUnitPrice(ctx context.Context) (int64, error) {
 	}
 
 	return price, nil
+}
+
+func (s *ShareRepository) MapRepositoryToDTO(share *Share, txn *Transaction, status *TransactionStatus) *dto.Shares {
+	units, err := strconv.ParseFloat(share.Units, 64)
+	if err != nil {
+		return nil
+	}
+
+	return &dto.Shares{
+		ID:          share.ID,
+		Transaction: *s.transaction.MapRepositoryToDTO(txn, status),
+		Units:       units,
+		UnitPrice:   share.UnitPrice,
+		CreatedAt:   share.CreatedAt,
+	}
 }

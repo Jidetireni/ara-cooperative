@@ -65,5 +65,5 @@ func (t *Transaction) ChargeRegistrationFee(ctx context.Context, input *dto.Tran
 		return nil, err
 	}
 
-	return t.MapRepositoryToDTO(transaction, status), nil
+	return t.TransactionRepo.MapRepositoryToDTO(transaction, status), nil
 }

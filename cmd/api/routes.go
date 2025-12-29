@@ -89,12 +89,14 @@ func (s *Server) router() {
 				r.Use(s.Factory.Middleware.RequireAuth)
 				r.Use(s.Factory.Middleware.RequireRole(constants.RoleAdmin))
 				r.Post("/", s.Handlers.CreateFine)
+				r.Get("/admin", s.Handlers.ListAllFines)
 			})
 
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth)
 				r.Use(s.Factory.Middleware.RequireRole(constants.RoleMember))
 				r.Post("/{id}/pay", s.Handlers.PayFine)
+				r.Get("/", s.Handlers.ListMyFines)
 			})
 		})
 

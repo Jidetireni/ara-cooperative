@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Jidetireni/ara-cooperative/internal/dto"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -11,14 +12,16 @@ import (
 )
 
 type FineRepository struct {
-	db   *sqlx.DB
-	psql sq.StatementBuilderType
+	db          *sqlx.DB
+	psql        sq.StatementBuilderType
+	transaction *TransactionRepository
 }
 
-func NewFineRepository(db *sqlx.DB) *FineRepository {
+func NewFineRepository(db *sqlx.DB, transactionRepo *TransactionRepository) *FineRepository {
 	return &FineRepository{
-		db:   db,
-		psql: sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
+		db:          db,
+		psql:        sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
+		transaction: transactionRepo,
 	}
 }
 
@@ -95,18 +98,22 @@ func (f *FineRepository) buildQuery(filter FineRepositoryFilter, opts QueryOptio
 	return builder.ToSql()
 }
 
-func (f *FineRepository) Get(ctx context.Context, filter FineRepositoryFilter) (*Fine, error) {
+func (f *FineRepository) Get(ctx context.Context, filter FineRepositoryFilter, tx *sqlx.Tx) (*Fine, error) {
 	query, args, err := f.buildQuery(filter, QueryOptions{Type: lo.ToPtr(QueryTypeSelect)})
 	if err != nil {
 		return nil, err
 	}
 
 	var fine Fine
-	if err := f.db.GetContext(ctx, &fine, query, args...); err != nil {
-		return nil, err
+	if tx != nil {
+		if err := tx.GetContext(ctx, &fine, query, args...); err != nil {
+			return nil, err
+		}
+		return &fine, nil
 	}
 
-	return &fine, nil
+	err = f.db.GetContext(ctx, &fine, query, args...)
+	return &fine, err
 }
 
 // Create inserts a new fine and returns it.
@@ -203,4 +210,20 @@ func (f *FineRepository) Delete(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) 
 
 	_, err = f.db.ExecContext(ctx, query, args...)
 	return err
+}
+
+func (f *FineRepository) MapRepositoryToDTO(fine *Fine, txn *Transaction, status *TransactionStatus) *dto.Fine {
+	if fine != nil {
+		return &dto.Fine{
+			ID:          fine.ID,
+			MemberID:    fine.MemberID,
+			Transaction: f.transaction.MapRepositoryToDTO(txn, status),
+			Amount:      fine.Amount,
+			Reason:      fine.Reason,
+			Deadline:    fine.Deadline,
+			Paid:        fine.PaidAt.Valid,
+		}
+	}
+
+	return nil
 }

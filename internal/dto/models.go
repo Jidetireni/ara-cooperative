@@ -175,7 +175,7 @@ type FineInput struct {
 	Amount   int64     `json:"amount" validate:"required,gt=0"`
 	MemberID uuid.UUID `json:"member_id" validate:"required"`
 	Reason   string    `json:"reason" validate:"required"`
-	Deadline string    `json:"deadline" validate:"required"`
+	Deadline time.Time `json:"deadline" validate:"required"`
 }
 
 type Fine struct {
@@ -186,11 +186,15 @@ type Fine struct {
 	Reason      string        `json:"reason"`
 	Deadline    time.Time     `json:"deadline"`
 	Paid        bool          `json:"paid"`
-	CreatedAt   time.Time     `json:"created_at"`
 }
 
 type TransactionFilters struct {
 	MemberSlug *string `json:"member_slug,omitempty"`
 	LedgerType *string `json:"ledger_type,omitempty"`
 	Type       *string `json:"type,omitempty"`
+}
+
+type FineFilter struct {
+	MemberID *uuid.UUID `json:"member_id,omitempty"`
+	Paid     *bool      `json:"paid,omitempty"`
 }

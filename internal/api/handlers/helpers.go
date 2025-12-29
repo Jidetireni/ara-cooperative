@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
 	"github.com/Jidetireni/ara-cooperative/pkg/token"
+	"github.com/google/uuid"
 )
 
 // TODO: seperate some errors to be authomatically handled
@@ -91,4 +93,27 @@ func setRefreshCookie(w http.ResponseWriter, refreshToken string, duration time.
 		Secure:   secure,
 		SameSite: sameSite,
 	})
+}
+
+func (h *Handlers) parseFineFilters(r *http.Request) (dto.FineFilter, error) {
+	q := r.URL.Query()
+	filters := dto.FineFilter{}
+
+	if mID := q.Get("member_id"); mID != "" {
+		id, err := uuid.Parse(mID)
+		if err != nil {
+			return filters, fmt.Errorf("invalid member_id format")
+		}
+		filters.MemberID = &id
+	}
+
+	if paidStr := q.Get("paid"); paidStr != "" {
+		isPaid, err := strconv.ParseBool(paidStr)
+		if err != nil {
+			return filters, fmt.Errorf("invalid boolean for 'paid'")
+		}
+		filters.Paid = &isPaid
+	}
+
+	return filters, nil
 }
