@@ -154,14 +154,13 @@ type TransactionsInput struct {
 
 type Transactions struct {
 	ID          uuid.UUID         `json:"id"`
-	MemberID    uuid.UUID         `json:"member_id"`
 	Amount      int64             `json:"amount"`
 	Description string            `json:"description"`
 	Type        TransactionType   `json:"type"`
 	LedgerType  LedgerType        `json:"ledger_type"`
 	Reference   string            `json:"reference"`
 	Status      TransactionStatus `json:"status"`
-	CreatedAt   time.Time         `json:"created_at"`
+	Member      Member            `json:"member"`
 }
 type TransactionStatus struct {
 	ID          uuid.UUID             `json:"id"`
@@ -180,7 +179,6 @@ type FineInput struct {
 
 type Fine struct {
 	ID          uuid.UUID     `json:"id"`
-	MemberID    uuid.UUID     `json:"member_id"`
 	Amount      int64         `json:"amount"`
 	Transaction *Transactions `json:"transactions,omitempty"`
 	Reason      string        `json:"reason"`

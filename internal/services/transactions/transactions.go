@@ -35,9 +35,9 @@ type TransactionRepository interface {
 	GetStatus(ctx context.Context, filter repository.TransactionRepositoryFilter) (*repository.TransactionStatus, error)
 	UpdateStatus(ctx context.Context, transactionStatus repository.TransactionStatus, tx *sqlx.Tx) (*repository.TransactionStatus, error)
 	GetBalance(ctx context.Context, filter repository.TransactionRepositoryFilter) (int64, error)
-	List(ctx context.Context, filter repository.TransactionRepositoryFilter, opts repository.QueryOptions) (*repository.ListResult[repository.PopTransaction], error)
-	Get(ctx context.Context, filter repository.TransactionRepositoryFilter) (*repository.PopTransaction, error)
-	MapRepositoryToDTO(txn *repository.Transaction, status *repository.TransactionStatus) *dto.Transactions
+	ListPopulated(ctx context.Context, filter repository.TransactionRepositoryFilter, opts repository.QueryOptions) (*repository.ListResult[repository.PopulatedTransaction], error)
+	GetPopulated(ctx context.Context, filter repository.TransactionRepositoryFilter, tx *sqlx.Tx) (*repository.PopulatedTransaction, error)
+	MapRepositoryToDTOModel(txn *repository.PopulatedTransaction) *dto.Transactions
 }
 
 type MemberRepository interface {
@@ -50,15 +50,16 @@ type ShareRepository interface {
 	CountTotalSharesPurchased(ctx context.Context, filter repository.ShareRepositoryFilter) (*repository.SharesTotalRows, error)
 	CreateUnitPrice(ctx context.Context, price int64, tx *sqlx.Tx) error
 	GetUnitPrice(ctx context.Context) (int64, error)
-	MapRepositoryToDTO(share *repository.Share, txn *repository.Transaction, status *repository.TransactionStatus) *dto.Shares
+	GetPopulated(ctx context.Context, filter repository.ShareRepositoryFilter, tx *sqlx.Tx) (*repository.PopulatedShare, error)
+	MapRepositoryToDTOModel(populated *repository.PopulatedShare) *dto.Shares
 }
 
 type FineRepository interface {
 	Create(ctx context.Context, fine *repository.Fine, tx *sqlx.Tx) (*repository.Fine, error)
-	Get(ctx context.Context, filter repository.FineRepositoryFilter, tx *sqlx.Tx) (*repository.Fine, error)
+	GetPopulated(ctx context.Context, filter repository.FineRepositoryFilter, tx *sqlx.Tx) (*repository.PopulatedFine, error)
 	Update(ctx context.Context, fine *repository.Fine, tx *sqlx.Tx) (*repository.Fine, error)
-	MapRepositoryToDTO(fine *repository.Fine, txn *repository.Transaction, status *repository.TransactionStatus) *dto.Fine
-	List(ctx context.Context, filter repository.FineRepositoryFilter, opts repository.QueryOptions) (*repository.ListResult[repository.Fine], error)
+	MapRepositoryToDTOModel(populated *repository.PopulatedFine) *dto.Fine
+	ListPopulated(ctx context.Context, filter repository.FineRepositoryFilter, opts repository.QueryOptions) (*repository.ListResult[repository.PopulatedFine], error)
 }
 
 type RedisPkg interface {
@@ -175,9 +176,9 @@ func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dt
 		result.Message = "transaction confirmed successfully"
 		switch ledger {
 		case repository.LedgerTypeREGISTRATIONFEE:
-			txn, err := t.TransactionRepo.Get(ctx, repository.TransactionRepositoryFilter{
+			txn, err := t.TransactionRepo.GetPopulated(ctx, repository.TransactionRepositoryFilter{
 				ID: lo.ToPtr(updatedStatus.TransactionID),
-			})
+			}, tx)
 			if err != nil {
 				return nil, err
 			}
@@ -194,20 +195,29 @@ func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dt
 			}
 
 		case repository.LedgerTypeFINES:
-			txn, err := t.TransactionRepo.Get(ctx, repository.TransactionRepositoryFilter{
+			txn, err := t.TransactionRepo.GetPopulated(ctx, repository.TransactionRepositoryFilter{
 				ID: lo.ToPtr(updatedStatus.TransactionID),
-			})
+			}, tx)
 			if err != nil {
 				return nil, err
 			}
-			fine, err := t.FineRepo.Get(ctx, repository.FineRepositoryFilter{
+			fine, err := t.FineRepo.GetPopulated(ctx, repository.FineRepositoryFilter{
 				TransactionID: &txn.ID,
 			}, tx)
 			if err != nil {
 				return nil, err
 			}
 			fine.PaidAt = sql.NullTime{Time: time.Now(), Valid: true}
-			_, err = t.FineRepo.Update(ctx, fine, tx)
+			_, err = t.FineRepo.Update(ctx, &repository.Fine{
+				ID:            fine.ID,
+				AdminID:       fine.AdminID,
+				MemberID:      fine.MemberID,
+				TransactionID: fine.TransactionID,
+				Amount:        fine.Amount,
+				Reason:        fine.Reason,
+				Deadline:      fine.Deadline,
+				PaidAt:        sql.NullTime{Time: time.Now(), Valid: true},
+			}, tx)
 			if err != nil {
 				return nil, err
 			}
@@ -264,7 +274,7 @@ func (t *Transaction) processDeposit(ctx context.Context, input dto.Transactions
 	}
 
 	defer tx.Rollback()
-	transaction, status, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
+	transaction, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
 		Input:      input,
 		Type:       repository.TransactionTypeDEPOSIT,
 		LedgerType: ledger,
@@ -277,7 +287,7 @@ func (t *Transaction) processDeposit(ctx context.Context, input dto.Transactions
 		return nil, err
 	}
 
-	return t.TransactionRepo.MapRepositoryToDTO(transaction, status), nil
+	return t.TransactionRepo.MapRepositoryToDTOModel(transaction), nil
 }
 
 // Helper method to get member by user ID
@@ -288,7 +298,7 @@ func (t *Transaction) getMemberByUserID(ctx context.Context, userID uuid.UUID) (
 }
 
 // Helper method to create transaction with status
-func (t *Transaction) createTransactionWithStatus(ctx context.Context, memberID uuid.UUID, params TransactionParams, tx *sqlx.Tx) (*repository.Transaction, *repository.TransactionStatus, error) {
+func (t *Transaction) createTransactionWithStatus(ctx context.Context, memberID uuid.UUID, params TransactionParams, tx *sqlx.Tx) (*repository.PopulatedTransaction, error) {
 	reference := lo.RandomString(12, lo.AlphanumericCharset)
 	transaction, err := t.TransactionRepo.Create(ctx, repository.Transaction{
 		MemberID:    memberID,
@@ -299,19 +309,31 @@ func (t *Transaction) createTransactionWithStatus(ctx context.Context, memberID 
 		Ledger:      params.LedgerType,
 	}, tx)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	status, err := t.TransactionRepo.CreateStatus(ctx, repository.TransactionStatus{
+	_, err = t.TransactionRepo.CreateStatus(ctx, repository.TransactionStatus{
 		TransactionID: transaction.ID,
 	}, tx)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
+	}
+
+	populatedTxn, err := t.TransactionRepo.GetPopulated(ctx, repository.TransactionRepositoryFilter{
+		ID: lo.ToPtr(transaction.ID),
+	}, tx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, &svc.APIError{
+				Status:  http.StatusNotFound,
+				Message: "transaction not found after creation",
+			}
+		}
+		return nil, err
 	}
 
 	// Notify admins of new transaction (non-blocking)
-
-	return transaction, status, nil
+	return populatedTxn, nil
 }
 
 func (t *Transaction) GetSavingsBalance(ctx context.Context) (int64, error) {
@@ -328,9 +350,7 @@ func (t *Transaction) getBalance(ctx context.Context, ledger repository.LedgerTy
 		return 0, svc.UnauthenticatedError()
 	}
 
-	member, err := t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{
-		UserID: &actor.ID,
-	})
+	member, err := t.getMemberByUserID(ctx, actor.ID)
 	if err != nil {
 		return 0, err
 	}

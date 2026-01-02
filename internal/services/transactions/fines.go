@@ -38,20 +38,37 @@ func (t *Transaction) ChargeFine(ctx context.Context, input *dto.FineInput) (*dt
 		}
 	}
 
+	tx, err := t.DB.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	fine, err := t.FineRepo.Create(ctx, &repository.Fine{
 		AdminID:  actor.ID,
 		MemberID: input.MemberID,
 		Amount:   input.Amount,
 		Reason:   input.Reason,
 		Deadline: input.Deadline,
-	}, nil)
+	}, tx)
 	if err != nil {
+		return nil, err
+	}
+
+	populatedFine, err := t.FineRepo.GetPopulated(ctx, repository.FineRepositoryFilter{
+		ID: &fine.ID,
+	}, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
 	// TODO: Send notification to member about the fine charged
 
-	return t.FineRepo.MapRepositoryToDTO(fine, nil, nil), nil
+	return t.FineRepo.MapRepositoryToDTOModel(populatedFine), nil
 }
 
 func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dto.TransactionsInput) (*dto.Fine, error) {
@@ -71,7 +88,7 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 	}
 	defer tx.Rollback()
 
-	fine, err := t.FineRepo.Get(ctx, repository.FineRepositoryFilter{
+	fine, err := t.FineRepo.GetPopulated(ctx, repository.FineRepositoryFilter{
 		ID:       &fineID,
 		MemberID: &member.ID,
 	}, tx)
@@ -101,7 +118,7 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 		description = txInput.Description
 	}
 
-	createdTxn, status, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
+	createdTxn, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
 		Input: dto.TransactionsInput{
 			Amount:      fine.Amount,
 			Description: description,
@@ -113,11 +130,31 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 		return nil, err
 	}
 
+	updatedFine, err := t.FineRepo.Update(ctx, &repository.Fine{
+		ID:            fine.ID,
+		AdminID:       fine.AdminID,
+		MemberID:      fine.MemberID,
+		TransactionID: uuid.NullUUID{UUID: createdTxn.ID, Valid: true},
+		Amount:        fine.Amount,
+		Reason:        fine.Reason,
+		Deadline:      fine.Deadline,
+	}, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	populatedFine, err := t.FineRepo.GetPopulated(ctx, repository.FineRepositoryFilter{
+		ID: &updatedFine.ID,
+	}, tx)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
-	return t.FineRepo.MapRepositoryToDTO(fine, createdTxn, status), nil
+	return t.FineRepo.MapRepositoryToDTOModel(populatedFine), nil
 }
 
 func (t *Transaction) ListFines(ctx context.Context, filters *dto.FineFilter, options *dto.QueryOptions) (*dto.ListResponse[dto.Fine], error) {
@@ -150,7 +187,7 @@ func (t *Transaction) ListFines(ctx context.Context, filters *dto.FineFilter, op
 		repoFilters.MemberID = &memberID.ID
 	}
 
-	result, err := t.FineRepo.List(ctx, repoFilters, repository.QueryOptions{
+	result, err := t.FineRepo.ListPopulated(ctx, repoFilters, repository.QueryOptions{
 		Limit:  options.Limit,
 		Cursor: options.Cursor,
 		Sort:   options.Sort,
@@ -159,8 +196,8 @@ func (t *Transaction) ListFines(ctx context.Context, filters *dto.FineFilter, op
 		return nil, err
 	}
 
-	dtoItems := lo.Map(result.Items, func(item *repository.Fine, _ int) dto.Fine {
-		return *t.FineRepo.MapRepositoryToDTO(item, nil, nil)
+	dtoItems := lo.Map(result.Items, func(item *repository.PopulatedFine, _ int) dto.Fine {
+		return *t.FineRepo.MapRepositoryToDTOModel(item)
 	})
 
 	return &dto.ListResponse[dto.Fine]{

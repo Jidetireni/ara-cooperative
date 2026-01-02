@@ -71,7 +71,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 	roleRepo := repository.NewRoleRepository(db.DB)
 	permissionRepo := repository.NewPermissionRepository(db.DB)
 	tokenRepo := repository.NewTokenRepository(db.DB)
-	transactionRepo := repository.NewTransactionRepository(db.DB)
+	transactionRepo := repository.NewTransactionRepository(db.DB, memberRepo)
 	shareRepo := repository.NewShareRepository(db.DB, transactionRepo)
 	fineRepo := repository.NewFineRepository(db.DB, transactionRepo)
 

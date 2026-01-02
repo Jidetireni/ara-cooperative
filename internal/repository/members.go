@@ -189,19 +189,23 @@ func (mq *MemberRepository) List(ctx context.Context, filter MemberRepositoryFil
 	return &listResult, nil
 }
 
-func (mq *MemberRepository) MapRepositoryToDTO(member *Member) *dto.Member {
-	isActive := false
-	if member.ActivatedAt.Valid {
-		isActive = true
+func (mq *MemberRepository) MapRepositoryToDTOModel(member *Member) *dto.Member {
+	if member != nil {
+		isActive := false
+		if member.ActivatedAt.Valid {
+			isActive = true
+		}
+		return &dto.Member{
+			ID:             member.ID,
+			FirstName:      member.FirstName,
+			LastName:       member.LastName,
+			Slug:           member.Slug,
+			Address:        member.Address.String,
+			NextOfKinName:  member.NextOfKinName.String,
+			NextOfKinPhone: member.NextOfKinPhone.String,
+			IsActive:       isActive,
+		}
 	}
-	return &dto.Member{
-		ID:             member.ID,
-		FirstName:      member.FirstName,
-		LastName:       member.LastName,
-		Slug:           member.Slug,
-		Address:        member.Address.String,
-		NextOfKinName:  member.NextOfKinName.String,
-		NextOfKinPhone: member.NextOfKinPhone.String,
-		IsActive:       isActive,
-	}
+
+	return nil
 }

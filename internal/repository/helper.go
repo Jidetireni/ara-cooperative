@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"strings"
@@ -150,4 +151,20 @@ func ToNullUUID(id uuid.UUID) uuid.NullUUID {
 	}
 
 	return uuid.NullUUID{UUID: id, Valid: true}
+}
+
+func ToNullTime(t *time.Time) sql.NullTime {
+	if t == nil {
+		return sql.NullTime{Valid: false}
+	}
+
+	return sql.NullTime{Time: *t, Valid: true}
+}
+
+func ToNullString(s *string) sql.NullString {
+	if s == nil {
+		return sql.NullString{Valid: false}
+	}
+
+	return sql.NullString{String: *s, Valid: true}
 }

@@ -27,9 +27,9 @@ func (s *Server) router() {
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth)
 				r.Use(s.Factory.Middleware.RequireRole(constants.RoleMember))
-				r.Route("/me", func(r chi.Router) {
-					r.Get("/savings/balance", s.Handlers.SavingsBalance)
-				})
+				// r.Route("/me", func(r chi.Router) {
+				// 	r.Get("/savings/balance", s.Handlers.SavingsBalance)
+				// })
 
 				r.Get("/{slug}", s.Handlers.MemberBySlug)
 			})

@@ -100,9 +100,10 @@ func (t *Transaction) calculateShareQuote(ctx context.Context, amount int64) (*c
 	unitsFloat := float64(scaledUnit) / SharePrecisionScale
 
 	return &calculateShareQuoteResult{
-		unitsFloat: unitsFloat,
-		remainder:  remainder,
-		unitPrice:  unitPrice,
+		scaledUnits: scaledUnit,
+		unitsFloat:  unitsFloat,
+		remainder:   remainder,
+		unitPrice:   unitPrice,
 	}, nil
 }
 
@@ -158,7 +159,7 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 	}
 	defer tx.Rollback()
 
-	transaction, status, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
+	transaction, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
 		Input: dto.TransactionsInput{
 			Amount:      input.Amount,
 			Description: fmt.Sprintf("Purchase of %f shares", result.unitsFloat),
@@ -179,11 +180,18 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 		return nil, err
 	}
 
+	populatedShare, err := t.ShareRepo.GetPopulated(ctx, repository.ShareRepositoryFilter{
+		ID: &shares.ID,
+	}, tx)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
-	return t.ShareRepo.MapRepositoryToDTO(shares, transaction, status), nil
+	return t.ShareRepo.MapRepositoryToDTOModel(populatedShare), nil
 }
 
 func (t *Transaction) GetTotalShares(ctx context.Context) (*dto.SharesTotal, error) {
@@ -191,7 +199,7 @@ func (t *Transaction) GetTotalShares(ctx context.Context) (*dto.SharesTotal, err
 		Confirmed:  lo.ToPtr(true),
 		Rejected:   lo.ToPtr(false),
 		Type:       lo.ToPtr(repository.TransactionTypeDEPOSIT),
-		LedgerType: repository.LedgerTypeSHARES,
+		LedgerType: lo.ToPtr(repository.LedgerTypeSHARES),
 	}
 
 	return t.calculateShareTotals(ctx, filters)
@@ -213,7 +221,7 @@ func (t *Transaction) GetMemberTotalShares(ctx context.Context) (*dto.SharesTota
 		Rejected:   lo.ToPtr(false),
 		Type:       lo.ToPtr(repository.TransactionTypeDEPOSIT),
 		MemberID:   &member.ID,
-		LedgerType: repository.LedgerTypeSHARES,
+		LedgerType: lo.ToPtr(repository.LedgerTypeSHARES),
 	}
 
 	return t.calculateShareTotals(ctx, filters)

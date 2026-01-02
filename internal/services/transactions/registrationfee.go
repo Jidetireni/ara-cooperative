@@ -43,7 +43,7 @@ func (t *Transaction) ChargeRegistrationFee(ctx context.Context, input *dto.Tran
 
 	defer tx.Rollback()
 
-	transaction, status, err := t.createTransactionWithStatus(
+	transaction, err := t.createTransactionWithStatus(
 		ctx,
 		member.ID,
 		TransactionParams{
@@ -65,5 +65,5 @@ func (t *Transaction) ChargeRegistrationFee(ctx context.Context, input *dto.Tran
 		return nil, err
 	}
 
-	return t.TransactionRepo.MapRepositoryToDTO(transaction, status), nil
+	return t.TransactionRepo.MapRepositoryToDTOModel(transaction), nil
 }

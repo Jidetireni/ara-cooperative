@@ -79,14 +79,14 @@ func (h *Handlers) ListPendingTransactions(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	result, err := h.factory.Repositories.Transaction.List(r.Context(), repoFilters, options)
+	result, err := h.factory.Repositories.Transaction.ListPopulated(r.Context(), repoFilters, options)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
 	}
 
-	dtoItems := lo.Map(result.Items, func(item *repository.PopTransaction, _ int) dto.Transactions {
-		return *h.factory.Repositories.Transaction.MapPopTransactionToDTO(item)
+	dtoItems := lo.Map(result.Items, func(item *repository.PopulatedTransaction, _ int) dto.Transactions {
+		return *h.factory.Repositories.Transaction.MapRepositoryToDTOModel(item)
 	})
 
 	h.writeJSON(w, http.StatusOK, dto.ListResponse[dto.Transactions]{
