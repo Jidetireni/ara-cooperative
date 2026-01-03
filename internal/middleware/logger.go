@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
@@ -17,14 +16,6 @@ func (m *Middleware) LoggerMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(ww, r)
 
-		var userID string
-		user, ok := users.FromContext(r.Context())
-		if !ok {
-			userID = ""
-		} else {
-			userID = user.ID.String()
-		}
-
 		m.Logger.Info().
 			Str("request_id", middleware.GetReqID(r.Context())).
 			Str("method", r.Method).
@@ -32,7 +23,6 @@ func (m *Middleware) LoggerMiddleware(next http.Handler) http.Handler {
 			Int("status", ww.Status()).
 			Dur("duration", time.Since(start)).
 			Str("ip", r.RemoteAddr).
-			Str("user_id", userID).
 			Msg("incoming_request")
 	})
 }

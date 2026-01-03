@@ -17,11 +17,11 @@ type TransactionRepository struct {
 	memberRepository *MemberRepository
 }
 
-func NewTransactionRepository(db *sqlx.DB, memberRepository *MemberRepository) *TransactionRepository {
+func NewTransactionRepository(db *sqlx.DB) *TransactionRepository {
 	return &TransactionRepository{
 		db:               db,
 		psql:             sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
-		memberRepository: memberRepository,
+		memberRepository: NewMemberRepository(db),
 	}
 }
 
@@ -431,7 +431,7 @@ func (s *TransactionRepository) mapFlatToPopulated(flat *populateTransactionFlat
 		NextOfKinName:  ToNullString(flat.MbNextOfKinName),
 		NextOfKinPhone: ToNullString(flat.MbNextOfKinPhone),
 		ActivatedAt:    ToNullTime(flat.MbActivatedAt),
-		CreatedAt:      *flat.MbCreatedAt,
+		CreatedAt:      lo.FromPtrOr(flat.MbCreatedAt, time.Time{}),
 		UpdatedAt:      ToNullTime(flat.MbUpdatedAt),
 		DeletedAt:      ToNullTime(flat.MbDeletedAt),
 	}

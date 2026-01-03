@@ -27,10 +27,6 @@ func (s *Server) router() {
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth)
 				r.Use(s.Factory.Middleware.RequireRole(constants.RoleMember))
-				// r.Route("/me", func(r chi.Router) {
-				// 	r.Get("/savings/balance", s.Handlers.SavingsBalance)
-				// })
-
 				r.Get("/{slug}", s.Handlers.MemberBySlug)
 			})
 		})
@@ -89,14 +85,14 @@ func (s *Server) router() {
 				r.Use(s.Factory.Middleware.RequireAuth)
 				r.Use(s.Factory.Middleware.RequireRole(constants.RoleAdmin))
 				r.Post("/", s.Handlers.CreateFine)
-				r.Get("/admin", s.Handlers.ListAllFines)
+				r.Get("/", s.Handlers.ListFines)
 			})
 
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireAuth)
 				r.Use(s.Factory.Middleware.RequireRole(constants.RoleMember))
 				r.Post("/{id}/pay", s.Handlers.PayFine)
-				r.Get("/", s.Handlers.ListMyFines)
+				r.Get("/me", s.Handlers.ListFines)
 			})
 		})
 

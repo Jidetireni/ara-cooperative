@@ -207,7 +207,7 @@ func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dt
 			if err != nil {
 				return nil, err
 			}
-			fine.PaidAt = sql.NullTime{Time: time.Now(), Valid: true}
+
 			_, err = t.FineRepo.Update(ctx, &repository.Fine{
 				ID:            fine.ID,
 				AdminID:       fine.AdminID,
@@ -323,12 +323,6 @@ func (t *Transaction) createTransactionWithStatus(ctx context.Context, memberID 
 		ID: lo.ToPtr(transaction.ID),
 	}, tx)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, &svc.APIError{
-				Status:  http.StatusNotFound,
-				Message: "transaction not found after creation",
-			}
-		}
 		return nil, err
 	}
 

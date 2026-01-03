@@ -13,16 +13,16 @@ import (
 )
 
 type ShareRepository struct {
-	db              *sqlx.DB
-	psql            sq.StatementBuilderType
-	transactionRepo *TransactionRepository
+	db                    *sqlx.DB
+	psql                  sq.StatementBuilderType
+	transactionRepository *TransactionRepository
 }
 
-func NewShareRepository(db *sqlx.DB, transactionRepo *TransactionRepository) *ShareRepository {
+func NewShareRepository(db *sqlx.DB) *ShareRepository {
 	return &ShareRepository{
-		db:              db,
-		psql:            sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
-		transactionRepo: transactionRepo,
+		db:                    db,
+		psql:                  sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
+		transactionRepository: NewTransactionRepository(db),
 	}
 }
 
@@ -151,6 +151,11 @@ func (s *ShareRepository) applyFilter(builder sq.SelectBuilder, filter ShareRepo
 	if filter.Type != nil {
 		builder = builder.Where(sq.Eq{"tr.type": *filter.Type})
 	}
+
+	if filter.LedgerType != nil {
+		builder = builder.Where(sq.Eq{"tr.ledger": *filter.LedgerType})
+	}
+
 	return builder
 }
 
@@ -171,9 +176,6 @@ func (s *ShareRepository) buildPopulatedQuery(filter ShareRepositoryFilter, opts
 		Join("transaction_status ts ON tr.id = ts.transaction_id").
 		Join("members mb ON tr.member_id = mb.id")
 
-	if filter.LedgerType != nil {
-		builder = builder.Where(sq.Eq{"tr.ledger": *filter.LedgerType})
-	}
 	builder = s.applyFilter(builder, filter)
 
 	if queryType != QueryTypeCount {
@@ -355,6 +357,16 @@ func (s *ShareRepository) mapFlatToPopulated(flat *populatedShareFlat) *Populate
 		Share: share,
 	}
 
+	var status TransactionStatus
+	if flat.TsID != nil {
+		status = TransactionStatus{
+			ID:          lo.FromPtrOr(flat.TsID, uuid.Nil),
+			ConfirmedAt: ToNullTime(flat.TsConfirmedAt),
+			RejectedAt:  ToNullTime(flat.TsRejectedAt),
+			CreatedAt:   ToNullTime(flat.TsCreatedAt),
+		}
+	}
+
 	if flat.TrID != nil {
 		populated.Transaction = &PopulatedTransaction{
 			Transaction: Transaction{
@@ -367,12 +379,7 @@ func (s *ShareRepository) mapFlatToPopulated(flat *populatedShareFlat) *Populate
 				Ledger:      lo.FromPtrOr(flat.TrLedger, ""),
 				CreatedAt:   ToNullTime(flat.TrCreatedAt),
 			},
-			Status: TransactionStatus{
-				ID:          lo.FromPtrOr(flat.TsID, uuid.Nil),
-				ConfirmedAt: ToNullTime(flat.TsConfirmedAt),
-				RejectedAt:  ToNullTime(flat.TsRejectedAt),
-				CreatedAt:   ToNullTime(flat.TsCreatedAt),
-			},
+			Status: status,
 			Member: member,
 		}
 	}
@@ -398,7 +405,10 @@ func (s *ShareRepository) MapRepositoryToDTOModel(populated *PopulatedShare) *dt
 	}
 
 	if populated.Transaction != nil {
-		result.Transaction = *s.transactionRepo.MapRepositoryToDTOModel(populated.Transaction)
+		txnDTO := s.transactionRepository.MapRepositoryToDTOModel(populated.Transaction)
+		if txnDTO != nil {
+			result.Transaction = *txnDTO
+		}
 	}
 
 	return result

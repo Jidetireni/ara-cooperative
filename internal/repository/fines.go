@@ -13,16 +13,16 @@ import (
 )
 
 type FineRepository struct {
-	db              *sqlx.DB
-	psql            sq.StatementBuilderType
-	transactionRepo *TransactionRepository
+	db                    *sqlx.DB
+	psql                  sq.StatementBuilderType
+	transactionRepository *TransactionRepository
 }
 
-func NewFineRepository(db *sqlx.DB, transactionRepo *TransactionRepository) *FineRepository {
+func NewFineRepository(db *sqlx.DB) *FineRepository {
 	return &FineRepository{
-		db:              db,
-		psql:            sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
-		transactionRepo: transactionRepo,
+		db:                    db,
+		psql:                  sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
+		transactionRepository: NewTransactionRepository(db),
 	}
 }
 
@@ -331,6 +331,16 @@ func (f *FineRepository) mapFlatToPopulated(flat *populatedFineFlat) *PopulatedF
 		Fine: fine,
 	}
 
+	var status TransactionStatus
+	if flat.TsID != nil {
+		status = TransactionStatus{
+			ID:          lo.FromPtrOr(flat.TsID, uuid.Nil),
+			ConfirmedAt: ToNullTime(flat.TsConfirmedAt),
+			RejectedAt:  ToNullTime(flat.TsRejectedAt),
+			CreatedAt:   ToNullTime(flat.TsCreatedAt),
+		}
+	}
+
 	if flat.TrID != nil {
 		populated.Transaction = &PopulatedTransaction{
 			Transaction: Transaction{
@@ -343,12 +353,7 @@ func (f *FineRepository) mapFlatToPopulated(flat *populatedFineFlat) *PopulatedF
 				Ledger:      lo.FromPtrOr(flat.TrLedger, ""),
 				CreatedAt:   ToNullTime(flat.TrCreatedAt),
 			},
-			Status: TransactionStatus{
-				ID:          lo.FromPtrOr(flat.TsID, uuid.Nil),
-				ConfirmedAt: ToNullTime(flat.TsConfirmedAt),
-				RejectedAt:  ToNullTime(flat.TsRejectedAt),
-				CreatedAt:   ToNullTime(flat.TsCreatedAt),
-			},
+			Status: status,
 			Member: member,
 		}
 
@@ -371,7 +376,7 @@ func (f *FineRepository) MapRepositoryToDTOModel(populated *PopulatedFine) *dto.
 	}
 
 	if populated.Transaction != nil {
-		result.Transaction = f.transactionRepo.MapRepositoryToDTOModel(populated.Transaction)
+		result.Transaction = f.transactionRepository.MapRepositoryToDTOModel(populated.Transaction)
 	}
 
 	return result

@@ -2,12 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
+	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/pkg/token"
 	"github.com/google/uuid"
 )
@@ -102,7 +102,10 @@ func (h *Handlers) parseFineFilters(r *http.Request) (dto.FineFilter, error) {
 	if mID := q.Get("member_id"); mID != "" {
 		id, err := uuid.Parse(mID)
 		if err != nil {
-			return filters, fmt.Errorf("invalid member_id format")
+			return filters, &svc.APIError{
+				Status:  http.StatusBadRequest,
+				Message: "invalid UUID for 'member_id'",
+			}
 		}
 		filters.MemberID = &id
 	}
@@ -110,7 +113,10 @@ func (h *Handlers) parseFineFilters(r *http.Request) (dto.FineFilter, error) {
 	if paidStr := q.Get("paid"); paidStr != "" {
 		isPaid, err := strconv.ParseBool(paidStr)
 		if err != nil {
-			return filters, fmt.Errorf("invalid boolean for 'paid'")
+			return filters, &svc.APIError{
+				Status:  http.StatusBadRequest,
+				Message: "invalid boolean for 'paid'",
+			}
 		}
 		filters.Paid = &isPaid
 	}
