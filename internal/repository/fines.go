@@ -192,12 +192,18 @@ func (f *FineRepository) GetPopulated(ctx context.Context, filter FineRepository
 	var flat populatedFineFlat
 	if tx != nil {
 		err = tx.GetContext(ctx, &flat, query, args...)
-		return f.mapFlatToPopulated(&flat), err
+		if err != nil {
+			return nil, err
+		}
+		return f.mapFlatToPopulated(&flat), nil
 	}
 
 	err = f.db.GetContext(ctx, &flat, query, args...)
+	if err != nil {
+		return nil, err
+	}
 
-	return f.mapFlatToPopulated(&flat), err
+	return f.mapFlatToPopulated(&flat), nil
 }
 
 func (f *FineRepository) ListPopulated(ctx context.Context, filter FineRepositoryFilter, opts QueryOptions) (*ListResult[PopulatedFine], error) {

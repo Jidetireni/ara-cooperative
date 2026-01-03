@@ -200,11 +200,18 @@ func (s *ShareRepository) GetPopulated(ctx context.Context, filter ShareReposito
 	var flat populatedShareFlat
 	if tx != nil {
 		err = tx.GetContext(ctx, &flat, query, args...)
-		return s.mapFlatToPopulated(&flat), err
+		if err != nil {
+			return nil, err
+		}
+		return s.mapFlatToPopulated(&flat), nil
 	}
 
 	err = s.db.GetContext(ctx, &flat, query, args...)
-	return s.mapFlatToPopulated(&flat), err
+	if err != nil {
+		return nil, err
+	}
+
+	return s.mapFlatToPopulated(&flat), nil
 }
 
 func (s *ShareRepository) ListPopulated(ctx context.Context, filter ShareRepositoryFilter, opts QueryOptions) (*ListResult[PopulatedShare], error) {

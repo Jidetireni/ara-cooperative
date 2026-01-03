@@ -214,10 +214,17 @@ func (t TransactionRepository) GetPopulated(ctx context.Context, filter Transact
 	var popTxn populateTransactionFlat
 	if tx != nil {
 		err = tx.GetContext(ctx, &popTxn, query, args...)
-		return t.mapFlatToPopulated(&popTxn), err
+		if err != nil {
+			return nil, err
+		}
+		return t.mapFlatToPopulated(&popTxn), nil
 	}
 
 	err = t.db.GetContext(ctx, &popTxn, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
 	return t.mapFlatToPopulated(&popTxn), err
 }
 
