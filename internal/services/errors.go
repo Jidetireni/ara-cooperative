@@ -35,3 +35,10 @@ func UnauthenticatedError() *APIError {
 		Message: "unauthenticated",
 	}
 }
+
+func ErrNotFound() *APIError {
+	return &APIError{
+		Status:  http.StatusNotFound,
+		Message: "not found",
+	}
+}

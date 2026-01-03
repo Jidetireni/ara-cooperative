@@ -12,6 +12,7 @@ import (
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 )
 
 func (t *Transaction) ChargeFine(ctx context.Context, input *dto.FineInput) (*dto.Fine, error) {
@@ -20,44 +21,54 @@ func (t *Transaction) ChargeFine(ctx context.Context, input *dto.FineInput) (*dt
 		return nil, svc.UnauthenticatedError()
 	}
 
-	// Ensure member exists (avoid FK violation)
-	_, err := t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{ID: &input.MemberID})
+	_, err := t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{
+		ID: &input.MemberID,
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, &svc.APIError{Status: http.StatusNotFound, Message: "member not found"}
+			return nil, svc.ErrNotFound()
 		}
 		return nil, err
 	}
 
-	// Parse deadline (RFC3339 string)
-	deadline, err := time.Parse(time.RFC3339, input.Deadline)
-	if err != nil {
+	if input.Deadline.Before(time.Now()) {
 		return nil, &svc.APIError{
 			Status:  http.StatusBadRequest,
-			Message: "invalid deadline format (use RFC3339)",
+			Message: "deadline must be a future date",
 		}
 	}
 
-	created, err := t.FineRepo.Create(ctx, &repository.Fine{
+	tx, err := t.DB.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	fine, err := t.FineRepo.Create(ctx, &repository.Fine{
 		AdminID:  actor.ID,
 		MemberID: input.MemberID,
 		Amount:   input.Amount,
 		Reason:   input.Reason,
-		Deadline: deadline,
-	}, nil)
+		Deadline: input.Deadline,
+	}, tx)
 	if err != nil {
 		return nil, err
 	}
 
-	return &dto.Fine{
-		ID:        created.ID,
-		MemberID:  created.MemberID,
-		Amount:    created.Amount,
-		Reason:    created.Reason,
-		Deadline:  created.Deadline,
-		Paid:      created.PaidAt.Valid,
-		CreatedAt: created.CreatedAt,
-	}, nil
+	populatedFine, err := t.FineRepo.GetPopulated(ctx, repository.FineRepositoryFilter{
+		ID: &fine.ID,
+	}, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	// TODO: Send notification to member about the fine charged
+
+	return t.FineRepo.MapRepositoryToDTOModel(populatedFine), nil
 }
 
 func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dto.TransactionsInput) (*dto.Fine, error) {
@@ -71,16 +82,19 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 		return nil, err
 	}
 
-	fine, err := t.FineRepo.Get(ctx, repository.FineRepositoryFilter{
+	tx, err := t.DB.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	fine, err := t.FineRepo.GetPopulated(ctx, repository.FineRepositoryFilter{
 		ID:       &fineID,
 		MemberID: &member.ID,
-	})
+	}, tx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, &svc.APIError{
-				Status:  http.StatusNotFound,
-				Message: "fine not found",
-			}
+			return nil, svc.ErrNotFound()
 		}
 		return nil, err
 	}
@@ -104,16 +118,7 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 		description = txInput.Description
 	}
 
-	tx, err := t.DB.BeginTxx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	createdTxn, status, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
+	createdTxn, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
 		Input: dto.TransactionsInput{
 			Amount:      fine.Amount,
 			Description: description,
@@ -127,16 +132,19 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 
 	updatedFine, err := t.FineRepo.Update(ctx, &repository.Fine{
 		ID:            fine.ID,
-		MemberID:      fine.MemberID,
 		AdminID:       fine.AdminID,
+		MemberID:      fine.MemberID,
+		TransactionID: uuid.NullUUID{UUID: createdTxn.ID, Valid: true},
 		Amount:        fine.Amount,
-		TransactionID: repository.ToNullUUID(createdTxn.ID),
 		Reason:        fine.Reason,
 		Deadline:      fine.Deadline,
-		PaidAt: sql.NullTime{
-			Time:  time.Now(),
-			Valid: true,
-		},
+	}, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	populatedFine, err := t.FineRepo.GetPopulated(ctx, repository.FineRepositoryFilter{
+		ID: &updatedFine.ID,
 	}, tx)
 	if err != nil {
 		return nil, err
@@ -146,14 +154,54 @@ func (t *Transaction) PayFine(ctx context.Context, fineID uuid.UUID, txInput *dt
 		return nil, err
 	}
 
-	return &dto.Fine{
-		ID:          fine.ID,
-		MemberID:    fine.MemberID,
-		Amount:      fine.Amount,
-		Transaction: t.MapRepositoryToDTO(createdTxn, status),
-		Reason:      fine.Reason,
-		Deadline:    fine.Deadline,
-		Paid:        updatedFine.PaidAt.Valid,
-		CreatedAt:   fine.CreatedAt,
+	return t.FineRepo.MapRepositoryToDTOModel(populatedFine), nil
+}
+
+func (t *Transaction) ListFines(ctx context.Context, filters *dto.FineFilter, options *dto.QueryOptions) (*dto.ListResponse[dto.Fine], error) {
+	actor, ok := users.FromContext(ctx)
+	if !ok {
+		return nil, svc.UnauthenticatedError()
+	}
+
+	repoFilters := repository.FineRepositoryFilter{
+		Paid: filters.Paid,
+	}
+
+	if actor.IsAuthenticatedAsAdmin {
+		if filters.MemberID != nil {
+			repoFilters.MemberID = filters.MemberID
+		}
+	} else {
+		memberID, err := t.getMemberByUserID(ctx, actor.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		if filters.MemberID != nil && *filters.MemberID != memberID.ID {
+			return nil, &svc.APIError{
+				Status:  http.StatusForbidden,
+				Message: "cannot access fines of other members",
+			}
+		}
+
+		repoFilters.MemberID = &memberID.ID
+	}
+
+	result, err := t.FineRepo.ListPopulated(ctx, repoFilters, repository.QueryOptions{
+		Limit:  options.Limit,
+		Cursor: options.Cursor,
+		Sort:   options.Sort,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	dtoItems := lo.Map(result.Items, func(item *repository.PopulatedFine, _ int) dto.Fine {
+		return *t.FineRepo.MapRepositoryToDTOModel(item)
+	})
+
+	return &dto.ListResponse[dto.Fine]{
+		Items:      dtoItems,
+		NextCursor: result.NextCursor,
 	}, nil
 }

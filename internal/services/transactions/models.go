@@ -9,11 +9,11 @@ import (
 )
 
 const (
-	DefaultSharesUnitPrice int64 = 50000
-	DefaultRegistrationFee int64 = 100000
+	DefaultSharesUnitPrice       = 50_000
+	DefaultRegistrationFee int64 = 10_0000
 
-	MinSavingsDepositAmount int64 = 10000
-	MinSpecialDepositAmount int64 = 50000
+	MinSavingsDepositAmount int64 = 10_000
+	MinSpecialDepositAmount int64 = 50_000
 
 	SharesUnitPriceRedisKey = "shares_unit_price"
 	SharesUnitPriceCacheTTL = time.Hour * 24 * 7
@@ -35,7 +35,8 @@ type BalanceFilter struct {
 }
 
 type calculateShareQuoteResult struct {
-	unitsFloat float64
-	remainder  int64
-	unitPrice  int64
+	scaledUnits int64
+	unitsFloat  float64
+	remainder   int64
+	unitPrice   int64
 }

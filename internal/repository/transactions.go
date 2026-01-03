@@ -2,8 +2,9 @@ package repository
 
 import (
 	"context"
-	"database/sql"
+	"time"
 
+	"github.com/Jidetireni/ara-cooperative/internal/dto"
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -11,14 +12,16 @@ import (
 )
 
 type TransactionRepository struct {
-	db   *sqlx.DB
-	psql sq.StatementBuilderType
+	db               *sqlx.DB
+	psql             sq.StatementBuilderType
+	memberRepository *MemberRepository
 }
 
 func NewTransactionRepository(db *sqlx.DB) *TransactionRepository {
 	return &TransactionRepository{
-		db:   db,
-		psql: sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
+		db:               db,
+		psql:             sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
+		memberRepository: NewMemberRepository(db),
 	}
 }
 
@@ -32,18 +35,47 @@ type TransactionRepositoryFilter struct {
 	LedgerType *LedgerType
 }
 
-type PopTransaction struct {
-	ID          uuid.UUID       `json:"id"`
-	MemberID    uuid.UUID       `json:"member_id"`
-	Description string          `json:"description"`
-	Reference   string          `json:"reference"`
-	Amount      int64           `json:"amount"`
-	Type        TransactionType `json:"type"`
-	LedgerType  LedgerType      `json:"ledger_type"`
-	CreatedAt   sql.NullTime    `json:"created_at"`
-	StatusID    uuid.UUID       `json:"status_id"`
-	ConfirmedAt sql.NullTime    `json:"confirmed_at"`
-	RejectedAt  sql.NullTime    `json:"rejected_at"`
+type PopulatedTransaction struct {
+	Transaction
+	Status TransactionStatus
+	Member Member
+}
+
+type populateTransactionFlat struct {
+	// transaction fields
+	TrID          uuid.UUID       `json:"tr_id"`
+	TrMemberID    uuid.UUID       `json:"tr_member_id"`
+	TrDescription string          `json:"tr_description"`
+	Tr_Reference  string          `json:"tr_reference"`
+	TrAmount      int64           `json:"tr_amount"`
+	TrType        TransactionType `json:"tr_type"`
+	TrLedgerType  LedgerType      `json:"tr_ledger_type"`
+	StatusID      uuid.UUID       `json:"tr_status_id"`
+	TrCreatedAt   *time.Time      `json:"tr_created_at"`
+	TrConfirmedAt *time.Time      `json:"tr_confirmed_at"`
+	TrRejectedAt  *time.Time      `json:"tr_rejected_at"`
+
+	//status fields
+	TsID            uuid.UUID  `json:"ts_id"`
+	TsTransactionID uuid.UUID  `json:"ts_transaction_id"`
+	TsConfirmedAt   *time.Time `json:"ts_confirmed_at"`
+	TsRejectedAt    *time.Time `json:"ts_rejected_at"`
+	TsCreatedAt     *time.Time `json:"ts_created_at"`
+
+	// member fields
+	MbID             uuid.UUID  `json:"mb_id"`
+	MbUserID         uuid.UUID  `json:"mb_user_id"`
+	MbFirstName      string     `json:"mb_first_name"`
+	MbLastName       string     `json:"mb_last_name"`
+	MbSlug           string     `json:"mb_slug"`
+	MbPhone          string     `json:"mb_phone"`
+	MbAddress        *string    `json:"mb_address"`
+	MbNextOfKinName  *string    `json:"mb_next_of_kin_name"`
+	MbNextOfKinPhone *string    `json:"mb_next_of_kin_phone"`
+	MbActivatedAt    *time.Time `json:"mb_activated_at"`
+	MbCreatedAt      *time.Time `json:"mb_created_at"`
+	MbUpdatedAt      *time.Time `json:"mb_updated_at"`
+	MbDeletedAt      *time.Time `json:"mb_deleted_at"`
 }
 
 func (s *TransactionRepository) applyFilter(builder sq.SelectBuilder, filter TransactionRepositoryFilter) sq.SelectBuilder {
@@ -88,37 +120,54 @@ func (s *TransactionRepository) applyFilter(builder sq.SelectBuilder, filter Tra
 }
 
 func (s *TransactionRepository) buildQuery(filter TransactionRepositoryFilter, opts QueryOptions) (string, []interface{}, error) {
-	var queryType QueryType = QueryTypeSelect
+	queryType := lo.FromPtrOr(opts.Type, QueryTypeSelect)
 	var err error
-	if opts.Type != nil {
-		queryType = *opts.Type
-	}
 
 	var builder sq.SelectBuilder
 	switch queryType {
 	case QueryTypeSelect:
 		builder = s.psql.Select(
-			"tr.id",
-			"tr.member_id",
-			"tr.description",
-			"tr.reference",
-			"tr.amount",
-			"tr.type",
-			"tr.ledger AS ledger_type",
-			"tr.created_at",
+			// transaction fields
+			"tr.id AS tr_id",
+			"tr.member_id AS tr_member_id",
+			"tr.description AS tr_description",
+			"tr.reference AS tr_reference",
+			"tr.amount AS tr_amount",
+			"tr.type AS tr_type",
+			"tr.ledger AS tr_ledger_type",
+			"tr.created_at AS tr_created_at",
+
 			// transaction status fields
-			"ts.id AS status_id",
-			"ts.confirmed_at",
-			"ts.rejected_at",
+			"ts.id AS ts_id",
+			"ts.transaction_id AS ts_transaction_id",
+			"ts.confirmed_at AS ts_confirmed_at",
+			"ts.rejected_at AS ts_rejected_at",
+			"ts.created_at AS ts_created_at",
+
+			// member fields
+			"mb.id AS mb_id",
+			"mb.user_id AS mb_user_id",
+			"mb.first_name AS mb_first_name",
+			"mb.last_name AS mb_last_name",
+			"mb.slug AS mb_slug",
+			"mb.phone AS mb_phone",
+			"mb.address AS mb_address",
+			"mb.next_of_kin_name AS mb_next_of_kin_name",
+			"mb.next_of_kin_phone AS mb_next_of_kin_phone",
+			"mb.activated_at AS mb_activated_at",
+			"mb.created_at AS mb_created_at",
+			"mb.updated_at AS mb_updated_at",
+			"mb.deleted_at AS mb_deleted_at",
 		)
 	case QueryTypeCount:
 		builder = s.psql.Select("COUNT(*)")
 	}
 
+	builder = builder.From("transactions tr")
 	// Join the two tables on the transaction ID
 	builder = builder.
-		From("transactions tr").
-		Join("transaction_status ts ON tr.id = ts.transaction_id")
+		LeftJoin("transaction_status ts ON tr.id = ts.transaction_id").
+		LeftJoin("members mb ON tr.member_id = mb.id")
 
 	builder = s.applyFilter(builder, filter)
 
@@ -156,40 +205,51 @@ func (t TransactionRepository) Create(ctx context.Context, transaction Transacti
 	return &createdTransaction, err
 }
 
-func (t TransactionRepository) Get(ctx context.Context, filter TransactionRepositoryFilter) (*PopTransaction, error) {
+func (t TransactionRepository) GetPopulated(ctx context.Context, filter TransactionRepositoryFilter, tx *sqlx.Tx) (*PopulatedTransaction, error) {
 	query, args, err := t.buildQuery(filter, QueryOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	var popTxn PopTransaction
+	var popTxn populateTransactionFlat
+	if tx != nil {
+		err = tx.GetContext(ctx, &popTxn, query, args...)
+		if err != nil {
+			return nil, err
+		}
+		return t.mapFlatToPopulated(&popTxn), nil
+	}
+
 	err = t.db.GetContext(ctx, &popTxn, query, args...)
 	if err != nil {
 		return nil, err
 	}
 
-	return &popTxn, nil
+	return t.mapFlatToPopulated(&popTxn), err
 }
 
-func (s *TransactionRepository) List(ctx context.Context, filter TransactionRepositoryFilter, opts QueryOptions) (*ListResult[PopTransaction], error) {
+func (s *TransactionRepository) ListPopulated(ctx context.Context, filter TransactionRepositoryFilter, opts QueryOptions) (*ListResult[PopulatedTransaction], error) {
 	query, args, err := s.buildQuery(filter, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	var transactions []*PopTransaction
-	err = s.db.SelectContext(ctx, &transactions, query, args...)
+	var flatList []populateTransactionFlat
+	err = s.db.SelectContext(ctx, &flatList, query, args...)
 	if err != nil {
 		return nil, err
 	}
 
-	listResult := ListResult[PopTransaction]{
-		Items: lo.Slice(transactions, 0, min(len(transactions), int(opts.Limit))),
+	populatedList := lo.Map(flatList, func(flat populateTransactionFlat, _ int) *PopulatedTransaction {
+		return s.mapFlatToPopulated(&flat)
+	})
+
+	listResult := ListResult[PopulatedTransaction]{
+		Items: lo.Slice(populatedList, 0, min(len(populatedList), int(opts.Limit))),
 	}
 
-	if len(transactions) > int(opts.Limit) {
-		returnedItems := lo.Slice(transactions, 0, int(min(len(transactions), int(opts.Limit))))
-		lastItem := lo.LastOr(returnedItems, nil)
+	if len(populatedList) > int(opts.Limit) {
+		lastItem := lo.LastOr(populatedList, nil)
 		if lastItem != nil {
 			nextCursor := EncodeCursor(lastItem.CreatedAt.Time, lastItem.ID)
 			listResult.NextCursor = &nextCursor
@@ -285,4 +345,124 @@ func (s *TransactionRepository) UpdateStatus(ctx context.Context, transactionSta
 
 	err = s.db.GetContext(ctx, &updatedTransactionStatus, query, args...)
 	return &updatedTransactionStatus, err
+}
+
+func (t *TransactionRepository) mapTypeToDTOModel(txnType *TransactionType) *dto.TransactionType {
+	if txnType != nil {
+		var dtoTxnType dto.TransactionType
+		switch *txnType {
+		case TransactionTypeDEPOSIT:
+			dtoTxnType = dto.TransactionTypeDeposit
+		case TransactionTypeWITHDRAWAL:
+			dtoTxnType = dto.TransactionTypeWithdrawal
+		default:
+			dtoTxnType = dto.TransactionTypeDeposit
+		}
+
+		return &dtoTxnType
+	}
+	return nil
+}
+
+func (t *TransactionRepository) mapLedgerToDTOModel(ledgerType *LedgerType) *dto.LedgerType {
+	if ledgerType != nil {
+		var dtoLedgerType dto.LedgerType
+		switch *ledgerType {
+		case LedgerTypeSAVINGS:
+			dtoLedgerType = dto.LedgerTypeSAVINGS
+		case LedgerTypeSPECIALDEPOSIT:
+			dtoLedgerType = dto.LedgerTypeSPECIALDEPOSIT
+		case LedgerTypeSHARES:
+			dtoLedgerType = dto.LedgerTypeSHARES
+		case LedgerTypeFINES:
+			dtoLedgerType = dto.LedgerTypeFINES
+		case LedgerTypeREGISTRATIONFEE:
+			dtoLedgerType = dto.LedgerTypeREGISTRATIONFEE
+		default:
+			dtoLedgerType = dto.LedgerTypeSAVINGS
+		}
+
+		return &dtoLedgerType
+	}
+	return nil
+}
+
+func (t *TransactionRepository) mapStatusToDTOModel(status *TransactionStatus) *dto.TransactionStatus {
+	if status != nil {
+		DTOStatus := dto.TransactionStatusTypePending
+		if status.ConfirmedAt.Valid {
+			DTOStatus = dto.TransactionStatusTypeConfirmed
+		} else if status.RejectedAt.Valid {
+			DTOStatus = dto.TransactionStatusTypeRejected
+		}
+
+		return &dto.TransactionStatus{
+			ID:          status.ID,
+			Status:      DTOStatus,
+			ConfirmedAt: &status.ConfirmedAt.Time,
+			RejectedAt:  &status.RejectedAt.Time,
+		}
+	}
+
+	return nil
+}
+
+func (s *TransactionRepository) mapFlatToPopulated(flat *populateTransactionFlat) *PopulatedTransaction {
+	transaction := Transaction{
+		ID:          flat.TrID,
+		MemberID:    flat.TrMemberID,
+		Description: flat.TrDescription,
+		Reference:   flat.Tr_Reference,
+		Amount:      flat.TrAmount,
+		Type:        flat.TrType,
+		Ledger:      flat.TrLedgerType,
+		CreatedAt:   ToNullTime(flat.TrCreatedAt),
+	}
+
+	status := TransactionStatus{
+		ID:            flat.StatusID,
+		TransactionID: flat.TsTransactionID,
+		ConfirmedAt:   ToNullTime(flat.TsConfirmedAt),
+		RejectedAt:    ToNullTime(flat.TsRejectedAt),
+		CreatedAt:     ToNullTime(flat.TsCreatedAt),
+	}
+
+	member := Member{
+		ID:             flat.MbID,
+		UserID:         flat.MbUserID,
+		FirstName:      flat.MbFirstName,
+		LastName:       flat.MbLastName,
+		Slug:           flat.MbSlug,
+		Phone:          flat.MbPhone,
+		Address:        ToNullString(flat.MbAddress),
+		NextOfKinName:  ToNullString(flat.MbNextOfKinName),
+		NextOfKinPhone: ToNullString(flat.MbNextOfKinPhone),
+		ActivatedAt:    ToNullTime(flat.MbActivatedAt),
+		CreatedAt:      lo.FromPtrOr(flat.MbCreatedAt, time.Time{}),
+		UpdatedAt:      ToNullTime(flat.MbUpdatedAt),
+		DeletedAt:      ToNullTime(flat.MbDeletedAt),
+	}
+
+	return &PopulatedTransaction{
+		Transaction: transaction,
+		Status:      status,
+		Member:      member,
+	}
+}
+
+func (t *TransactionRepository) MapRepositoryToDTOModel(txn *PopulatedTransaction) *dto.Transactions {
+	if txn != nil {
+		return &dto.Transactions{
+			ID:          txn.Transaction.ID,
+			Description: txn.Transaction.Description,
+			Reference:   txn.Transaction.Reference,
+			Amount:      txn.Transaction.Amount,
+			Type:        *t.mapTypeToDTOModel(&txn.Transaction.Type),
+			LedgerType:  *t.mapLedgerToDTOModel(&txn.Transaction.Ledger),
+			Status:      *t.mapStatusToDTOModel(&txn.Status),
+			Member:      *t.memberRepository.MapRepositoryToDTOModel(&txn.Member),
+		}
+	}
+
+	return nil
 }

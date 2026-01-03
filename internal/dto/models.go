@@ -154,14 +154,13 @@ type TransactionsInput struct {
 
 type Transactions struct {
 	ID          uuid.UUID         `json:"id"`
-	MemberID    uuid.UUID         `json:"member_id"`
 	Amount      int64             `json:"amount"`
 	Description string            `json:"description"`
 	Type        TransactionType   `json:"type"`
 	LedgerType  LedgerType        `json:"ledger_type"`
 	Reference   string            `json:"reference"`
 	Status      TransactionStatus `json:"status"`
-	CreatedAt   time.Time         `json:"created_at"`
+	Member      Member            `json:"member"`
 }
 type TransactionStatus struct {
 	ID          uuid.UUID             `json:"id"`
@@ -175,22 +174,25 @@ type FineInput struct {
 	Amount   int64     `json:"amount" validate:"required,gt=0"`
 	MemberID uuid.UUID `json:"member_id" validate:"required"`
 	Reason   string    `json:"reason" validate:"required"`
-	Deadline string    `json:"deadline" validate:"required"`
+	Deadline time.Time `json:"deadline" validate:"required"`
 }
 
 type Fine struct {
 	ID          uuid.UUID     `json:"id"`
-	MemberID    uuid.UUID     `json:"member_id"`
 	Amount      int64         `json:"amount"`
 	Transaction *Transactions `json:"transactions,omitempty"`
 	Reason      string        `json:"reason"`
 	Deadline    time.Time     `json:"deadline"`
 	Paid        bool          `json:"paid"`
-	CreatedAt   time.Time     `json:"created_at"`
 }
 
 type TransactionFilters struct {
 	MemberSlug *string `json:"member_slug,omitempty"`
 	LedgerType *string `json:"ledger_type,omitempty"`
 	Type       *string `json:"type,omitempty"`
+}
+
+type FineFilter struct {
+	MemberID *uuid.UUID `json:"member_id,omitempty"`
+	Paid     *bool      `json:"paid,omitempty"`
 }

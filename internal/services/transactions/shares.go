@@ -100,9 +100,10 @@ func (t *Transaction) calculateShareQuote(ctx context.Context, amount int64) (*c
 	unitsFloat := float64(scaledUnit) / SharePrecisionScale
 
 	return &calculateShareQuoteResult{
-		unitsFloat: unitsFloat,
-		remainder:  remainder,
-		unitPrice:  unitPrice,
+		scaledUnits: scaledUnit,
+		unitsFloat:  unitsFloat,
+		remainder:   remainder,
+		unitPrice:   unitPrice,
 	}, nil
 }
 
@@ -158,7 +159,7 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 	}
 	defer tx.Rollback()
 
-	transaction, status, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
+	transaction, err := t.createTransactionWithStatus(ctx, member.ID, TransactionParams{
 		Input: dto.TransactionsInput{
 			Amount:      input.Amount,
 			Description: fmt.Sprintf("Purchase of %f shares", result.unitsFloat),
@@ -179,16 +180,18 @@ func (t *Transaction) BuyShares(ctx context.Context, input dto.BuySharesInput) (
 		return nil, err
 	}
 
+	populatedShare, err := t.ShareRepo.GetPopulated(ctx, repository.ShareRepositoryFilter{
+		ID: &shares.ID,
+	}, tx)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
-	return t.MapPopShareToDTO(&repository.PopShare{
-		ID:            shares.ID,
-		TransactionID: shares.TransactionID,
-		Units:         shares.Units,
-		UnitPrice:     shares.UnitPrice,
-	}, transaction, status)
+	return t.ShareRepo.MapRepositoryToDTOModel(populatedShare), nil
 }
 
 func (t *Transaction) GetTotalShares(ctx context.Context) (*dto.SharesTotal, error) {
@@ -196,7 +199,7 @@ func (t *Transaction) GetTotalShares(ctx context.Context) (*dto.SharesTotal, err
 		Confirmed:  lo.ToPtr(true),
 		Rejected:   lo.ToPtr(false),
 		Type:       lo.ToPtr(repository.TransactionTypeDEPOSIT),
-		LedgerType: repository.LedgerTypeSHARES,
+		LedgerType: lo.ToPtr(repository.LedgerTypeSHARES),
 	}
 
 	return t.calculateShareTotals(ctx, filters)
@@ -218,7 +221,7 @@ func (t *Transaction) GetMemberTotalShares(ctx context.Context) (*dto.SharesTota
 		Rejected:   lo.ToPtr(false),
 		Type:       lo.ToPtr(repository.TransactionTypeDEPOSIT),
 		MemberID:   &member.ID,
-		LedgerType: repository.LedgerTypeSHARES,
+		LedgerType: lo.ToPtr(repository.LedgerTypeSHARES),
 	}
 
 	return t.calculateShareTotals(ctx, filters)
@@ -241,20 +244,5 @@ func (t *Transaction) calculateShareTotals(ctx context.Context, filters reposito
 	return &dto.SharesTotal{
 		Units:  units,
 		Amount: total.Amount,
-	}, nil
-}
-
-func (t *Transaction) MapPopShareToDTO(share *repository.PopShare, txn *repository.Transaction, status *repository.TransactionStatus) (*dto.Shares, error) {
-	units, err := strconv.ParseFloat(share.Units, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid share units: %w", err)
-	}
-
-	return &dto.Shares{
-		ID:          share.ID,
-		Transaction: *t.MapRepositoryToDTO(txn, status),
-		Units:       units,
-		UnitPrice:   share.UnitPrice,
-		CreatedAt:   share.CreatedAt,
 	}, nil
 }

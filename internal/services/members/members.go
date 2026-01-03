@@ -37,7 +37,7 @@ var (
 type MemberRepository interface {
 	Create(ctx context.Context, member *repository.Member, tx *sqlx.Tx) (*repository.Member, error)
 	Get(ctx context.Context, filter repository.MemberRepositoryFilter) (*repository.Member, error)
-	MapRepositoryToDTO(member *repository.Member) *dto.Member
+	MapRepositoryToDTOModel(member *repository.Member) *dto.Member
 }
 
 type UserRepository interface {
@@ -167,7 +167,7 @@ func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.M
 		}
 	}()
 
-	return m.MemberRepository.MapRepositoryToDTO(member), nil
+	return m.MemberRepository.MapRepositoryToDTOModel(member), nil
 }
 
 func (m *Member) GetBySlug(ctx context.Context, slug string) (*dto.Member, error) {
@@ -184,7 +184,7 @@ func (m *Member) GetBySlug(ctx context.Context, slug string) (*dto.Member, error
 		return nil, err
 	}
 
-	return m.MemberRepository.MapRepositoryToDTO(member), nil
+	return m.MemberRepository.MapRepositoryToDTOModel(member), nil
 }
 
 func (m *Member) IsMemberActive(ctx context.Context, memberID uuid.UUID) (bool, error) {
