@@ -20,6 +20,5 @@ func run() error {
 	}
 	defer cleanup()
 
-	server.Start()
-	return nil
+	return server.Start()
 }

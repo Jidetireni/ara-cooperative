@@ -65,9 +65,21 @@ func (h *Handlers) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setRefreshCookie(w, refreshToken, token.RefreshTokenExpirationTime, h.config.IsDev)
-	err = h.writeJSON(w, http.StatusOK, resp.AccessToken, nil)
+	err = h.writeJSON(w, http.StatusOK, resp, nil)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
+	}
+}
+
+func (h *Handlers) CurrentUser(w http.ResponseWriter, r *http.Request) {
+	user, err := h.factory.Services.User.CurrentUser(r.Context())
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+	if err := h.writeJSON(w, http.StatusOK, user, nil); err != nil {
+		h.logError(r, err)
 	}
 }

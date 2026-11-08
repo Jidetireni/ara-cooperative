@@ -59,6 +59,49 @@ func (ns NullLedgerType) Value() (driver.Value, error) {
 	return string(ns.LedgerType), nil
 }
 
+type PaymentStatus string
+
+const (
+	PaymentStatusPENDING PaymentStatus = "PENDING"
+	PaymentStatusSUCCESS PaymentStatus = "SUCCESS"
+	PaymentStatusFAILED  PaymentStatus = "FAILED"
+)
+
+func (e *PaymentStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PaymentStatus(s)
+	case string:
+		*e = PaymentStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PaymentStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPaymentStatus struct {
+	PaymentStatus PaymentStatus `json:"payment_status"`
+	Valid         bool          `json:"valid"` // Valid is true if PaymentStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPaymentStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PaymentStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PaymentStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPaymentStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PaymentStatus), nil
+}
+
 type TransactionType string
 
 const (
@@ -103,6 +146,29 @@ func (ns NullTransactionType) Value() (driver.Value, error) {
 	return string(ns.TransactionType), nil
 }
 
+type Campaign struct {
+	ID              uuid.UUID      `json:"id"`
+	AdminID         uuid.UUID      `json:"admin_id"`
+	Name            string         `json:"name"`
+	Description     string         `json:"description"`
+	Participation   string         `json:"participation"`
+	AmountType      string         `json:"amount_type"`
+	Amount          sql.NullInt64  `json:"amount"`
+	StartsAt        time.Time      `json:"starts_at"`
+	EndsAt          time.Time      `json:"ends_at"`
+	CreatedAt       time.Time      `json:"created_at"`
+	Status          string         `json:"status"`
+	StatusReason    sql.NullString `json:"status_reason"`
+	StatusChangedBy uuid.NullUUID  `json:"status_changed_by"`
+	StatusChangedAt sql.NullTime   `json:"status_changed_at"`
+	Resolution      sql.NullString `json:"resolution"`
+	ResolvedBy      uuid.NullUUID  `json:"resolved_by"`
+	ResolvedAt      sql.NullTime   `json:"resolved_at"`
+	UpdatedAt       sql.NullTime   `json:"updated_at"`
+	UpdatedBy       uuid.NullUUID  `json:"updated_by"`
+	IsRefunded      bool           `json:"is_refunded"`
+}
+
 type Fine struct {
 	ID            uuid.UUID     `json:"id"`
 	AdminID       uuid.UUID     `json:"admin_id"`
@@ -116,13 +182,47 @@ type Fine struct {
 	UpdatedAt     sql.NullTime  `json:"updated_at"`
 }
 
+type Loan struct {
+	ID                      uuid.UUID      `json:"id"`
+	MemberID                uuid.UUID      `json:"member_id"`
+	RequestedAmount         int64          `json:"requested_amount"`
+	Purpose                 string         `json:"purpose"`
+	RequestedDurationMonths int32          `json:"requested_duration_months"`
+	Status                  string         `json:"status"`
+	ApprovedAmount          sql.NullInt64  `json:"approved_amount"`
+	ApprovedDurationMonths  sql.NullInt32  `json:"approved_duration_months"`
+	InterestMethod          sql.NullString `json:"interest_method"`
+	InterestRatePercent     sql.NullString `json:"interest_rate_percent"`
+	InterestPeriod          sql.NullString `json:"interest_period"`
+	ReviewReason            sql.NullString `json:"review_reason"`
+	OverrideReason          sql.NullString `json:"override_reason"`
+	EligibilitySnapshot     sql.NullString `json:"eligibility_snapshot"`
+	ReviewedBy              uuid.NullUUID  `json:"reviewed_by"`
+	ReviewedAt              sql.NullTime   `json:"reviewed_at"`
+	DisbursedAmount         sql.NullInt64  `json:"disbursed_amount"`
+	DisbursedAt             sql.NullTime   `json:"disbursed_at"`
+	DisbursementReference   sql.NullString `json:"disbursement_reference"`
+	DisbursedBy             uuid.NullUUID  `json:"disbursed_by"`
+	TransactionID           uuid.NullUUID  `json:"transaction_id"`
+	CreatedAt               time.Time      `json:"created_at"`
+	UpdatedAt               sql.NullTime   `json:"updated_at"`
+}
+
+type LoanSetting struct {
+	ID                int16         `json:"id"`
+	MinimumSavings    int64         `json:"minimum_savings"`
+	MinimumShareUnits string        `json:"minimum_share_units"`
+	UpdatedBy         uuid.NullUUID `json:"updated_by"`
+	UpdatedAt         sql.NullTime  `json:"updated_at"`
+}
+
 type Member struct {
 	ID             uuid.UUID      `json:"id"`
 	UserID         uuid.UUID      `json:"user_id"`
 	Slug           string         `json:"slug"`
 	FirstName      string         `json:"first_name"`
 	LastName       string         `json:"last_name"`
-	Phone          string         `json:"phone"`
+	Phone          sql.NullString `json:"phone"`
 	Address        sql.NullString `json:"address"`
 	NextOfKinName  sql.NullString `json:"next_of_kin_name"`
 	NextOfKinPhone sql.NullString `json:"next_of_kin_phone"`
@@ -130,6 +230,37 @@ type Member struct {
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      sql.NullTime   `json:"updated_at"`
 	DeletedAt      sql.NullTime   `json:"deleted_at"`
+}
+
+type Payment struct {
+	ID                    uuid.UUID      `json:"id"`
+	MemberID              uuid.UUID      `json:"member_id"`
+	Purpose               LedgerType     `json:"purpose"`
+	Reference             string         `json:"reference"`
+	Currency              string         `json:"currency"`
+	Amount                int64          `json:"amount"`
+	MaintenanceFee        int64          `json:"maintenance_fee"`
+	MaintenanceFeePercent int32          `json:"maintenance_fee_percent"`
+	ProcessingCharge      int64          `json:"processing_charge"`
+	Total                 int64          `json:"total"`
+	Description           string         `json:"description"`
+	FineID                uuid.NullUUID  `json:"fine_id"`
+	ShareUnitPrice        sql.NullInt64  `json:"share_unit_price"`
+	ShareUnits            sql.NullString `json:"share_units"`
+	SettlementSubaccount  sql.NullString `json:"settlement_subaccount"`
+	SettlementShare       sql.NullInt64  `json:"settlement_share"`
+	Status                PaymentStatus  `json:"status"`
+	AuthorizationUrl      sql.NullString `json:"authorization_url"`
+	AccessCode            sql.NullString `json:"access_code"`
+	TransactionID         uuid.NullUUID  `json:"transaction_id"`
+	ProviderTransactionID sql.NullInt64  `json:"provider_transaction_id"`
+	ProviderFees          sql.NullInt64  `json:"provider_fees"`
+	Channel               sql.NullString `json:"channel"`
+	FailureReason         sql.NullString `json:"failure_reason"`
+	PaidAt                sql.NullTime   `json:"paid_at"`
+	CreatedAt             time.Time      `json:"created_at"`
+	UpdatedAt             sql.NullTime   `json:"updated_at"`
+	CampaignID            uuid.NullUUID  `json:"campaign_id"`
 }
 
 type Permission struct {
@@ -151,6 +282,12 @@ type Share struct {
 	Units         string    `json:"units"`
 	UnitPrice     int64     `json:"unit_price"`
 	CreatedAt     time.Time `json:"created_at"`
+}
+
+type ShareUnitPrice struct {
+	ID        uuid.UUID `json:"id"`
+	Price     int64     `json:"price"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Token struct {

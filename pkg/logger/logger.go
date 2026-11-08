@@ -1,34 +1,42 @@
 package logger
 
 import (
-	"os"
-	"time"
+	"errors"
+	"fmt"
+	"syscall"
 
 	"github.com/Jidetireni/ara-cooperative/internal/config"
-	"github.com/rs/zerolog"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type Logger struct {
-	*zerolog.Logger
+	*zap.Logger
+	Sugar *zap.SugaredLogger
 }
 
-func New(cfg config.Config) *Logger {
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-
-	level := zerolog.InfoLevel
+func New(cfg config.Config) (*Logger, error) {
+	options := zap.NewProductionConfig()
 	if cfg.IsDev {
-		level = zerolog.DebugLevel
+		options = zap.NewDevelopmentConfig()
 	}
-	zerolog.SetGlobalLevel(level)
+	options.OutputPaths = []string{"stdout"}
+	options.ErrorOutputPaths = []string{"stderr"}
+	options.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
-	z := zerolog.New(os.Stdout).With().Timestamp().Logger()
-
-	if cfg.IsDev {
-		z = z.Output(zerolog.ConsoleWriter{
-			Out:        os.Stdout,
-			TimeFormat: time.RFC3339,
-		})
+	base, err := options.Build()
+	if err != nil {
+		return nil, fmt.Errorf("initialize logger: %w", err)
 	}
+	return &Logger{Logger: base, Sugar: base.Sugar()}, nil
+}
 
-	return &Logger{Logger: &z}
+func (l *Logger) Sync() error {
+	err := l.Logger.Sync()
+	// Standard output can reject fsync even though log writes succeed.
+	unsupportedSync := errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOTTY)
+	if unsupportedSync || errors.Is(err, syscall.EBADF) {
+		return nil
+	}
+	return err
 }

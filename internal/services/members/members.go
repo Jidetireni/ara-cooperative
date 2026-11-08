@@ -5,21 +5,25 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/http"
-	"strings"
-	"time"
-
 	"github.com/Jidetireni/ara-cooperative/internal/config"
 	"github.com/Jidetireni/ara-cooperative/internal/constants"
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
 	"github.com/Jidetireni/ara-cooperative/internal/helpers"
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
+	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 	"github.com/Jidetireni/ara-cooperative/pkg/email"
+	"github.com/Jidetireni/ara-cooperative/pkg/logger"
 	"github.com/Jidetireni/ara-cooperative/pkg/token"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	"github.com/samber/lo"
+	"html"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
 )
 
 var (
@@ -35,12 +39,17 @@ var (
 )
 
 type MemberRepository interface {
+	NextNumber(ctx context.Context, tx *sqlx.Tx) (int64, error)
 	Create(ctx context.Context, member *repository.Member, tx *sqlx.Tx) (*repository.Member, error)
-	Get(ctx context.Context, filter repository.MemberRepositoryFilter) (*repository.Member, error)
+	Get(ctx context.Context, filter repository.MemberRepositoryFilter, tx *sqlx.Tx) (*repository.Member, error)
+	Update(ctx context.Context, member *repository.Member, tx *sqlx.Tx) (*repository.Member, error)
+	ListPopulated(ctx context.Context, filter repository.MemberRepositoryFilter, opts repository.QueryOptions) (*repository.ListResult[repository.PopulatedMember], error)
 	MapRepositoryToDTOModel(member *repository.Member) *dto.Member
+	MapPopulatedToDTOModel(populated *repository.PopulatedMember) *dto.MemberSummary
 }
 
 type UserRepository interface {
+	Get(ctx context.Context, filter repository.UserRepositoryFilter, tx *sqlx.Tx) (*repository.User, error)
 	Create(ctx context.Context, user *repository.User, tx *sqlx.Tx) (*repository.User, error)
 	Exists(ctx context.Context, filter repository.UserRepositoryFilter) (bool, error)
 }
@@ -72,9 +81,20 @@ type Member struct {
 	PermissionRepo   PermissionRepository
 	TokenRepo        TokenRepository
 	Email            EmailPkg
+	Logger           *logger.Logger
 }
 
-func New(db *sqlx.DB, config *config.Config, memberRepo MemberRepository, userRepo UserRepository, roleRepo RoleRepository, permissionRepo PermissionRepository, tokenRepo TokenRepository, emailPkg EmailPkg) *Member {
+func New(
+	db *sqlx.DB,
+	config *config.Config,
+	memberRepo MemberRepository,
+	userRepo UserRepository,
+	roleRepo RoleRepository,
+	permissionRepo PermissionRepository,
+	tokenRepo TokenRepository,
+	emailPkg EmailPkg,
+	log *logger.Logger,
+) *Member {
 	return &Member{
 		DB:               db,
 		Config:           config,
@@ -84,96 +104,259 @@ func New(db *sqlx.DB, config *config.Config, memberRepo MemberRepository, userRe
 		PermissionRepo:   permissionRepo,
 		TokenRepo:        tokenRepo,
 		Email:            emailPkg,
+		Logger:           log,
 	}
 }
 
-func (m Member) Create(ctx context.Context, input dto.CreateMemberInput) (*dto.Member, error) {
-	rawToken := helpers.GenerateOTP()
-	tokenHash := helpers.HashToken(rawToken)
+const invitationLifetime = 30 * time.Minute
 
+func (m *Member) Create(
+	ctx context.Context, input dto.CreateMemberInput,
+) (result *dto.MemberInvitation, err error) {
+	permissions := []constants.UserPermissions{constants.MemberWriteALL}
+	if !users.HasAdminPermissions(ctx, permissions) {
+		return nil, svc.AdminForbiddenError(permissions)
+	}
+	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+	input.FirstName = strings.TrimSpace(input.FirstName)
+	input.LastName = strings.TrimSpace(input.LastName)
+	if input.Email == "" || input.FirstName == "" {
+		return nil, &svc.APIError{Status: http.StatusBadRequest, Message: "email and member name required"}
+	}
+	baseURL, err := url.Parse(m.Config.Server.FEURL)
+	if err != nil || baseURL.Host == "" || (baseURL.Scheme != "http" && baseURL.Scheme != "https") {
+		return nil, errors.New("a valid FE_URL is required for invitations")
+	}
+	rawToken, err := helpers.GenerateSetupToken()
+	if err != nil {
+		return nil, fmt.Errorf("generate invitation token: %w", err)
+	}
+	expiresAt := time.Now().UTC().Add(invitationLifetime)
 	tx, err := m.DB.BeginTxx(ctx, nil)
 	if err != nil {
-		return &dto.Member{}, err
+		return nil, fmt.Errorf("begin member invitation: %w", err)
 	}
-	defer tx.Rollback()
-
-	user, err := m.UserRepository.Create(ctx, &repository.User{
-		Email: input.Email,
-	}, tx)
-	if err != nil {
-		return &dto.Member{}, err
-	}
-
-	memberSlug := strings.ToLower(fmt.Sprintf("ara%06d", helpers.GetNextMemberNumber()))
-	member, err := m.MemberRepository.Create(ctx, &repository.Member{
-		UserID:    user.ID,
-		Slug:      memberSlug,
-		FirstName: input.FirstName,
-		LastName:  input.LastName,
-		Phone:     input.Phone,
-		Address: sql.NullString{
-			String: input.Address,
-			Valid:  input.Address != "",
-		},
-		NextOfKinName: sql.NullString{
-			String: input.NextOfKinName,
-			Valid:  input.NextOfKinName != "",
-		},
-		NextOfKinPhone: sql.NullString{
-			String: input.NextOfKinPhone,
-			Valid:  input.NextOfKinPhone != "",
-		},
-	}, tx)
-	if err != nil {
-		return &dto.Member{}, err
-	}
-
-	err = m.AssignDefaultRoleAndPermissions(ctx, user.ID, tx)
-	if err != nil {
-		return &dto.Member{}, err
-	}
-
-	expiresAt := time.Now().Add(30 * time.Minute)
-	_, err = m.TokenRepo.Create(ctx, &repository.Token{
-		UserID:    user.ID,
-		Token:     tokenHash,
-		TokenType: token.SetPasswordToken,
-		IsValid:   true,
-		ExpiresAt: expiresAt,
-	}, tx)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return &dto.Member{}, err
-	}
-
-	go func() {
-		body := fmt.Sprintf(
-			"Hello %s,\n\nYour account has been created.\nUse the following code to set your password:\n\n%s\n\nThis code expires in 15 minutes.",
-			input.FirstName,
-			rawToken,
-		)
-
-		err := m.Email.Send(context.Background(), &email.SendEmailInput{
-			To:      input.Email,
-			Subject: "Welcome! Verify your account",
-			Body:    body,
-		})
-		if err != nil {
-			// Log this error! The user exists but didn't get the code.
-			// fmt.Printf("Failed to send email to %s: %v\n", input.Email, err)
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			err = errors.Join(err, fmt.Errorf("rollback member invitation: %w", rollbackErr))
 		}
 	}()
+	user, err := m.UserRepository.Get(ctx, repository.UserRepositoryFilter{Email: &input.Email, ForUpdate: true}, tx)
+	if errors.Is(err, sql.ErrNoRows) {
+		user, err = m.UserRepository.Create(ctx, &repository.User{Email: input.Email}, tx)
+		var duplicate *pq.Error
+		if errors.As(err, &duplicate) && duplicate.Code == "23505" {
+			return nil, &svc.APIError{Status: http.StatusConflict,
+				Message: "account already exists; retry the invitation or review the account"}
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find or create invited account: %w", err)
+	}
+	member, err := m.MemberRepository.Get(ctx, repository.MemberRepositoryFilter{UserID: &user.ID}, tx)
+	if errors.Is(err, sql.ErrNoRows) {
+		number, numberErr := m.MemberRepository.NextNumber(ctx, tx)
+		if numberErr != nil {
+			return nil, fmt.Errorf("allocate member number: %w", numberErr)
+		}
+		member, err = m.MemberRepository.Create(ctx, &repository.Member{
+			UserID: user.ID, Slug: fmt.Sprintf("ara%06d", number),
+			FirstName: input.FirstName, LastName: input.LastName,
+		}, tx)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find or create pending membership: %w", err)
+	}
+	if member.ActivatedAt.Valid {
+		return nil, &svc.APIError{Status: http.StatusConflict, Message: "this account already has an active membership"}
+	}
+	if err := m.AssignDefaultRoleAndPermissions(ctx, user.ID, tx); err != nil {
+		return nil, fmt.Errorf("assign invited member access: %w", err)
+	}
+	needsSetup := !user.PasswordHash.Valid || user.PasswordHash.String == ""
+	if needsSetup {
+		if _, err := m.TokenRepo.Create(ctx, &repository.Token{
+			UserID: user.ID, Token: helpers.HashToken(rawToken), TokenType: token.SetPasswordToken,
+			IsValid: true, ExpiresAt: expiresAt,
+		}, tx); err != nil {
+			return nil, fmt.Errorf("save invitation token: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit member invitation: %w", err)
+	}
+	result = &dto.MemberInvitation{
+		Email: user.Email, Member: m.MemberRepository.MapRepositoryToDTOModel(member),
+		RequiresPasswordSetup: needsSetup, Delivery: "sent",
+	}
+	link := baseURL.JoinPath("login")
+	link.RawQuery = ""
+	link.Fragment = ""
+	message := "Sign in with your existing password to continue your membership setup."
+	if needsSetup {
+		result.ExpiresAt = &expiresAt
+		link = baseURL.JoinPath("set-password")
+		link.RawQuery = ""
+		// A fragment keeps the setup secret out of HTTP access logs and referrers.
+		link.Fragment = "email=" + user.Email + "&token=" + rawToken
+		link.RawFragment = url.Values{"email": {user.Email}, "token": {rawToken}}.Encode()
+		message = "Choose your password using this one-time link. It expires in 30 minutes."
+	}
+	body := fmt.Sprintf("<p>Hello %s,</p><p>You have been invited to join the cooperative.</p>"+
+		"<p>%s</p><p><a href=\"%s\">Continue membership setup</a></p>"+
+		"<p>Your membership remains pending until the membership fee is verified.</p>",
+		html.EscapeString(member.FirstName), html.EscapeString(message), html.EscapeString(link.String()),
+	)
+	if err := m.Email.Send(ctx, &email.SendEmailInput{
+		To: user.Email, Subject: "Your cooperative membership invitation", Body: body,
+	}); err != nil {
+		// The committed invitation can be retried by the admin without duplicating membership.
+		result.Delivery = "failed"
+		m.Logger.Sugar.Errorw("member invitation delivery failed", "error", err, "member_id", member.ID.String())
+	}
+	return result, nil
+}
 
+func (m *Member) Current(ctx context.Context) (*dto.Member, error) {
+	actor, ok := users.FromContext(ctx)
+	if !ok || actor.ID == uuid.Nil {
+		return nil, svc.UnauthenticatedError()
+	}
+	if !actor.IsAuthenticatedAsMember {
+		return nil, &svc.APIError{Status: http.StatusForbidden, Message: "member access required"}
+	}
+	member, err := m.MemberRepository.Get(ctx, repository.MemberRepositoryFilter{UserID: &actor.ID}, nil)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, svc.ErrNotFound()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load current member: %w", err)
+	}
 	return m.MemberRepository.MapRepositoryToDTOModel(member), nil
+}
+
+func (m *Member) UpdateProfile(
+	ctx context.Context, input dto.UpdateMemberProfileInput,
+) (result *dto.Member, err error) {
+	actor, ok := users.FromContext(ctx)
+	if !ok || actor.ID == uuid.Nil {
+		return nil, svc.UnauthenticatedError()
+	}
+	if !actor.IsAuthenticatedAsMember {
+		return nil, &svc.APIError{Status: http.StatusForbidden, Message: "member access required"}
+	}
+	input.Phone = strings.TrimSpace(input.Phone)
+	input.Address = strings.TrimSpace(input.Address)
+	input.NextOfKinName = strings.TrimSpace(input.NextOfKinName)
+	input.NextOfKinPhone = strings.TrimSpace(input.NextOfKinPhone)
+	invalidPhone := !validProfilePhone(input.Phone) || !validProfilePhone(input.NextOfKinPhone)
+	missingDetails := input.Address == "" || input.NextOfKinName == ""
+	if invalidPhone || missingDetails {
+		return nil, &svc.APIError{Status: http.StatusBadRequest,
+			Message: "complete all profile fields; phone numbers need 7 to 15 digits with an optional leading +"}
+	}
+	tx, err := m.DB.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin member profile update: %w", err)
+	}
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			err = errors.Join(err, fmt.Errorf("rollback member profile update: %w", rollbackErr))
+		}
+	}()
+	// Lock the current row so saving the profile preserves the latest activation state.
+	member, err := m.MemberRepository.Get(ctx, repository.MemberRepositoryFilter{
+		UserID: &actor.ID, ForUpdate: true,
+	}, tx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, svc.ErrNotFound()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load member profile for update: %w", err)
+	}
+	member.Phone = sql.NullString{String: input.Phone, Valid: true}
+	member.Address = sql.NullString{String: input.Address, Valid: true}
+	member.NextOfKinName = sql.NullString{String: input.NextOfKinName, Valid: true}
+	member.NextOfKinPhone = sql.NullString{String: input.NextOfKinPhone, Valid: true}
+	updated, err := m.MemberRepository.Update(ctx, member, tx)
+	var duplicate *pq.Error
+	if errors.As(err, &duplicate) && duplicate.Code == "23505" {
+		return nil, &svc.APIError{Status: http.StatusConflict, Message: "phone number is already used by another member"}
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, svc.ErrNotFound()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update member profile: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit member profile update: %w", err)
+	}
+	return m.MemberRepository.MapRepositoryToDTOModel(updated), nil
+}
+
+// maxMemberSearchLength bounds the admin search term before it reaches ILIKE.
+const maxMemberSearchLength = 100
+
+// List returns members newest first with their account email, for admins.
+func (m *Member) List(
+	ctx context.Context, filters dto.MemberFilter, options *dto.QueryOptions,
+) (*dto.ListResponse[dto.MemberSummary], error) {
+	actor, ok := users.FromContext(ctx)
+	if !ok || actor.ID == uuid.Nil {
+		return nil, svc.UnauthenticatedError()
+	}
+	if !actor.IsAuthenticatedAsAdmin {
+		return nil, &svc.APIError{Status: http.StatusForbidden, Message: "admin access required"}
+	}
+
+	repoFilter := repository.MemberRepositoryFilter{IsActive: filters.IsActive}
+	if filters.Search != nil {
+		search := strings.TrimSpace(*filters.Search)
+		if len(search) > maxMemberSearchLength {
+			return nil, &svc.APIError{Status: http.StatusBadRequest,
+				Message: fmt.Sprintf("search must be at most %d characters", maxMemberSearchLength)}
+		}
+		if search != "" {
+			repoFilter.Search = &search
+		}
+	}
+
+	// The admin list is always newest first; the repository supplies the column.
+	result, err := m.MemberRepository.ListPopulated(ctx, repoFilter, repository.QueryOptions{
+		Limit:  options.Limit,
+		Cursor: options.Cursor,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list members: %w", err)
+	}
+
+	items := lo.Map(result.Items, func(item *repository.PopulatedMember, _ int) dto.MemberSummary {
+		return *m.MemberRepository.MapPopulatedToDTOModel(item)
+	})
+	return &dto.ListResponse[dto.MemberSummary]{
+		Items:      items,
+		NextCursor: result.NextCursor,
+	}, nil
+}
+
+func validProfilePhone(phone string) bool {
+	digits := strings.TrimPrefix(phone, "+")
+	if len(digits) < 7 || len(digits) > 15 {
+		return false
+	}
+	for _, digit := range digits {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Member) GetBySlug(ctx context.Context, slug string) (*dto.Member, error) {
 	member, err := m.MemberRepository.Get(ctx, repository.MemberRepositoryFilter{
 		Slug: &slug,
-	})
+	}, nil)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, &svc.APIError{
@@ -190,7 +373,7 @@ func (m *Member) GetBySlug(ctx context.Context, slug string) (*dto.Member, error
 func (m *Member) IsMemberActive(ctx context.Context, memberID uuid.UUID) (bool, error) {
 	member, err := m.MemberRepository.Get(ctx, repository.MemberRepositoryFilter{
 		ID: &memberID,
-	})
+	}, nil)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, &svc.APIError{
@@ -221,6 +404,10 @@ func (m *Member) AssignDefaultRoleAndPermissions(ctx context.Context, userID uui
 		return err
 	}
 
+	if len(roles) != 1 {
+		return errors.New("member role is missing; apply database setup first")
+	}
+
 	roleIDs := lo.Map(roles, func(role repository.Role, _ int) uuid.UUID {
 		return role.ID
 	})
@@ -244,6 +431,10 @@ func (m *Member) AssignDefaultRoleAndPermissions(ctx context.Context, userID uui
 	permissionIDs := lo.Map(permmisions, func(permission repository.Permission, _ int) uuid.UUID {
 		return permission.ID
 	})
+
+	if len(permissionIDs) == 0 {
+		return nil
+	}
 
 	err = m.PermissionRepo.AssignToUser(ctx, &userID, permissionIDs, tx)
 	if err != nil {

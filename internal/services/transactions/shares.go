@@ -2,8 +2,6 @@ package transactions
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -15,63 +13,8 @@ import (
 	"github.com/samber/lo"
 )
 
-func (t *Transaction) SetSharesUnitPrice(ctx context.Context, input dto.SetShareUnitPriceInput) error {
-	if input.UnitPrice <= 0 {
-		return &svc.APIError{
-			Status:  http.StatusBadRequest,
-			Message: "unit price must be a positive integer",
-		}
-	}
-
-	tx, err := t.DB.BeginTxx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	err = t.ShareRepo.CreateUnitPrice(ctx, input.UnitPrice, tx)
-	if err != nil {
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-
-	err = t.RedisPkg.SetPrimitive(ctx, SharesUnitPriceRedisKey, strconv.FormatInt(input.UnitPrice, 10), SharesUnitPriceCacheTTL)
-	if err != nil {
-		t.Logger.Error().Err(err).Msg("failed to update shares unit price cache")
-		_ = t.RedisPkg.Delete(ctx, SharesUnitPriceRedisKey)
-	}
-
-	return nil
-}
-
-func (t *Transaction) GetSharesUnitPrice(ctx context.Context) (int64, error) {
-	priceStr, err := t.RedisPkg.GetPrimitive(ctx, SharesUnitPriceRedisKey)
-	if err == nil {
-		price, err := strconv.ParseInt(priceStr, 10, 64)
-		if err == nil {
-			return price, nil
-		}
-	}
-
-	price, err := t.ShareRepo.GetUnitPrice(ctx)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return DefaultSharesUnitPrice, nil
-		}
-		return 0, err
-	}
-
-	go func() {
-		err = t.RedisPkg.SetPrimitive(context.Background(), SharesUnitPriceRedisKey, strconv.FormatInt(price, 10), SharesUnitPriceCacheTTL)
-		if err != nil {
-			t.Logger.Error().Err(err).Msg("failed to set shares unit price cache")
-		}
-	}()
-
-	return price, nil
+func (t *Transaction) GetSharesUnitPrice(_ context.Context) (int64, error) {
+	return t.UnitPrice, nil
 }
 
 func (t *Transaction) calculateShareQuote(ctx context.Context, amount int64) (*calculateShareQuoteResult, error) {

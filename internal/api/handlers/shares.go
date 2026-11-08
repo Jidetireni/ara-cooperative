@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"github.com/google/uuid"
 	"net/http"
 	"strconv"
 
@@ -10,29 +11,6 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 )
 
-func (h *Handlers) SetShareUnitPrice(w http.ResponseWriter, r *http.Request) {
-	permission := []constants.UserPermissions{constants.MemberWriteALL}
-	hasPermission := users.HasAdminPermissions(r.Context(), permission)
-	if !hasPermission {
-		h.errorResponse(w, r, svc.AdminForbiddenError(permission))
-		return
-	}
-
-	var input dto.SetShareUnitPriceInput
-	if !h.decodeAndValidate(w, r, &input) {
-		return
-	}
-
-	err := h.factory.Services.Transactions.SetSharesUnitPrice(r.Context(), input)
-	if err != nil {
-		h.errorResponse(w, r, err)
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, map[string]bool{"success": true}, nil)
-}
-
-// GetShareUnitPrice returns the current unit price.
 func (h *Handlers) GetShareUnitPrice(w http.ResponseWriter, r *http.Request) {
 	unitPrice, err := h.factory.Services.Transactions.GetSharesUnitPrice(r.Context())
 	if err != nil {
@@ -111,4 +89,28 @@ func (h *Handlers) GetMemberTotalSharesPurchased(w http.ResponseWriter, r *http.
 	}
 
 	h.writeJSON(w, http.StatusOK, total, nil)
+}
+
+// ListSharePurchases lists share purchases for admins. Query: member_id,
+// limit, cursor.
+func (h *Handlers) ListSharePurchases(w http.ResponseWriter, r *http.Request) {
+	var memberID *uuid.UUID
+	if v := r.URL.Query().Get("member_id"); v != "" {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			h.errorResponse(w, r, &svc.APIError{Status: http.StatusBadRequest, Message: "invalid UUID for 'member_id'"})
+			return
+		}
+		memberID = &id
+	}
+
+	result, err := h.factory.Services.Transactions.ListSharePurchases(r.Context(), memberID, h.getPaginationParams(r))
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+	if err := h.writeJSON(w, http.StatusOK, result, nil); err != nil {
+		h.logError(r, err)
+	}
 }

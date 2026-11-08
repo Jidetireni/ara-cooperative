@@ -1,4 +1,14 @@
 .env
-bin
-tmp
+/bin/
+/tmp/
 migrations/queries
+
+# Local search index and macOS metadata
+/.cocoindex_code/
+.DS_Store
+
+# Generated test and profiling output
+/coverage.out
+/coverage.html
+*.test
+*.prof

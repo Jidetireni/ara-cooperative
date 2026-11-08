@@ -4,14 +4,17 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/config"
 	"github.com/Jidetireni/ara-cooperative/internal/middleware"
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
+	"github.com/Jidetireni/ara-cooperative/internal/services/campaigns"
+	"github.com/Jidetireni/ara-cooperative/internal/services/loans"
 	"github.com/Jidetireni/ara-cooperative/internal/services/members"
+	"github.com/Jidetireni/ara-cooperative/internal/services/payments"
 	"github.com/Jidetireni/ara-cooperative/internal/services/transactions"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 
-	"github.com/Jidetireni/ara-cooperative/pkg/cache"
 	"github.com/Jidetireni/ara-cooperative/pkg/database"
 	emailpkg "github.com/Jidetireni/ara-cooperative/pkg/email"
 	"github.com/Jidetireni/ara-cooperative/pkg/logger"
+	"github.com/Jidetireni/ara-cooperative/pkg/paystack"
 	"github.com/Jidetireni/ara-cooperative/pkg/token"
 	"github.com/go-chi/chi/v5"
 )
@@ -25,20 +28,26 @@ type Repositories struct {
 	Transaction *repository.TransactionRepository
 	Share       *repository.ShareRepository
 	Fine        *repository.FineRepository
+	Payment     *repository.PaymentRepository
+	Campaign    *repository.CampaignRepository
+	Loan        *repository.LoanRepository
 }
 
 type Services struct {
 	Member       *members.Member
 	User         *users.User
 	Transactions *transactions.Transaction
+	Payments     *payments.Payment
+	Campaigns    *campaigns.Campaign
+	Loans        *loans.Loan
 }
 
 type Packages struct {
-	DB     *database.PostgresDB
-	Email  *emailpkg.Email
-	JWTTok *token.Jwt
-	Logger *logger.Logger
-	Cache  *cache.Redis
+	DB       *database.PostgresDB
+	Email    *emailpkg.Email
+	JWTTok   *token.Jwt
+	Logger   *logger.Logger
+	Paystack *paystack.Client
 }
 
 type Factory struct {
@@ -62,9 +71,11 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		return nil, nil, err
 	}
 
-	logger := logger.New(*cfg)
-
-	redis, cacheCleanUp := cache.New(cfg, logger)
+	logger, err := logger.New(*cfg)
+	if err != nil {
+		dbCleanUp()
+		return nil, nil, err
+	}
 
 	userRepo := repository.NewUserRepository(db.DB)
 	memberRepo := repository.NewMemberRepository(db.DB)
@@ -74,6 +85,15 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 	transactionRepo := repository.NewTransactionRepository(db.DB)
 	shareRepo := repository.NewShareRepository(db.DB)
 	fineRepo := repository.NewFineRepository(db.DB)
+	paymentRepo := repository.NewPaymentRepository(db.DB)
+	campaignRepo := repository.NewCampaignRepository(db.DB)
+	loanRepo := repository.NewLoanRepository(db.DB)
+	paystackClient := paystack.New(cfg.Paystack.SecretKey, cfg.Paystack.BaseURL)
+	if !paystackClient.Enabled() {
+		logger.Sugar.Warnw("PAYSTACK_SECRET_KEY is not set; online payments are disabled")
+	} else if cfg.Paystack.OwnerSubaccount == "" {
+		logger.Sugar.Warnw("PAYSTACK_OWNER_SUBACCOUNT is not set; new online checkouts are disabled")
+	}
 
 	membersService := members.New(
 		db.DB,
@@ -84,6 +104,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		permissionRepo,
 		tokenRepo,
 		email,
+		logger,
 	)
 
 	usersService := users.New(
@@ -94,6 +115,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		roleRepo,
 		permissionRepo,
 		tokenRepo,
+		memberRepo,
 	)
 
 	transactionService := transactions.New(
@@ -102,25 +124,43 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		memberRepo,
 		shareRepo,
 		fineRepo,
-		redis,
+		cfg.Shares.UnitPrice,
 		logger,
 	)
 
-	middleware := middleware.New(jwtToken, logger)
+	paymentsService := payments.New(
+		db.DB,
+		cfg,
+		paymentRepo,
+		memberRepo,
+		userRepo,
+		transactionRepo,
+		shareRepo,
+		fineRepo,
+		campaignRepo,
+		transactionService,
+		paystackClient,
+		logger,
+	)
+
+	middleware := middleware.New(jwtToken, logger, usersService)
 
 	return &Factory{
 			Router: chi.NewRouter(),
 			Pkgs: &Packages{
-				DB:     db,
-				Email:  email,
-				JWTTok: jwtToken,
-				Logger: logger,
-				Cache:  redis,
+				DB:       db,
+				Email:    email,
+				JWTTok:   jwtToken,
+				Logger:   logger,
+				Paystack: paystackClient,
 			},
 			Services: &Services{
 				Member:       membersService,
 				User:         usersService,
 				Transactions: transactionService,
+				Payments:     paymentsService,
+				Campaigns:    campaigns.New(db.DB, campaignRepo, memberRepo, paymentRepo),
+				Loans:        loans.New(db.DB, loanRepo, memberRepo, transactionRepo, shareRepo),
 			},
 			Repositories: &Repositories{
 				Member:      memberRepo,
@@ -131,10 +171,15 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 				Transaction: transactionRepo,
 				Share:       shareRepo,
 				Fine:        fineRepo,
+				Payment:     paymentRepo,
+				Campaign:    campaignRepo,
+				Loan:        loanRepo,
 			},
 			Middleware: middleware,
 		}, func() {
 			dbCleanUp()
-			cacheCleanUp()
+			if err := logger.Sync(); err != nil {
+				logger.Sugar.Errorw("failed to flush logs", "error", err)
+			}
 		}, nil
 }

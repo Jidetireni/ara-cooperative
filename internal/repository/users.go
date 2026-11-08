@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
@@ -21,8 +22,9 @@ func NewUserRepository(db *sqlx.DB) *UserRepository {
 }
 
 type UserRepositoryFilter struct {
-	ID    *uuid.UUID
-	Email *string
+	ID        *uuid.UUID
+	Email     *string
+	ForUpdate bool
 }
 
 func (uq *UserRepository) buildQuery(filter UserRepositoryFilter, queryType QueryType) (string, []any, error) {
@@ -41,18 +43,28 @@ func (uq *UserRepository) buildQuery(filter UserRepositoryFilter, queryType Quer
 		builder = builder.Where(sq.Eq{"id": *filter.ID})
 	}
 	if filter.Email != nil {
-		builder = builder.Where(sq.Eq{"email": *filter.Email})
+		builder = builder.Where("lower(email) = lower(?)", *filter.Email)
 	}
 
+	if filter.ForUpdate && queryType == QueryTypeSelect {
+		builder = builder.Suffix("FOR UPDATE")
+	}
 	return builder.ToSql()
 }
 
-func (uq *UserRepository) Get(ctx context.Context, filter UserRepositoryFilter) (*User, error) {
+func (uq *UserRepository) Get(ctx context.Context, filter UserRepositoryFilter, tx *sqlx.Tx) (*User, error) {
 	query, args, err := uq.buildQuery(filter, QueryTypeSelect)
 	if err != nil {
 		return nil, err
 	}
 	var user User
+	if tx != nil {
+		err = tx.GetContext(ctx, &user, query, args...)
+		return &user, err
+	}
+	if filter.ForUpdate {
+		return nil, errors.New("row locking requires a transaction")
+	}
 	if err := uq.db.GetContext(ctx, &user, query, args...); err != nil {
 		return nil, err
 	}

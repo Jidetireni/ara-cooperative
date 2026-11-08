@@ -87,6 +87,7 @@ func (p *PostgresDB) upsertRoles() {
 	roles := []struct {
 		Name string
 	}{
+		{Name: constants.RoleOwner},
 		{Name: string(constants.RoleAdmin)},
 		{Name: string(constants.RoleMember)},
 	}

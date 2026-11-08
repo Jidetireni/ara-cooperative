@@ -22,3 +22,11 @@ func HashToken(token string) string {
 	hasher.Write([]byte(token))
 	return hex.EncodeToString(hasher.Sum(nil))
 }
+
+func GenerateSetupToken() (string, error) {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return "", fmt.Errorf("generate setup secret: %w", err)
+	}
+	return hex.EncodeToString(secret), nil
+}

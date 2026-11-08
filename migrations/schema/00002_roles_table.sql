@@ -6,6 +6,8 @@ CREATE TABLE
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
+INSERT INTO roles (name) VALUES ('owner'), ('admin'), ('member');
+
 CREATE INDEX idx_roles_name ON roles (name);
 CREATE INDEX idx_roles_created_at_id ON roles (created_at, id);
 

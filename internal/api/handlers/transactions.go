@@ -94,3 +94,81 @@ func (h *Handlers) ListPendingTransactions(w http.ResponseWriter, r *http.Reques
 		NextCursor: result.NextCursor,
 	}, nil)
 }
+
+// ListTransactions lists every member's transactions for admins. Query:
+// member_id, ledger_type, type, status (PENDING|CONFIRMED|REJECTED), search,
+// limit, cursor.
+func (h *Handlers) ListTransactions(w http.ResponseWriter, r *http.Request) {
+	filters, err := parseTransactionListFilters(r)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+	result, err := h.factory.Services.Transactions.ListTransactions(r.Context(), filters, h.getPaginationParams(r))
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+	if err := h.writeJSON(w, http.StatusOK, result, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
+// ListMyTransactions lists the signed-in member's own transactions, newest first.
+func (h *Handlers) ListMyTransactions(w http.ResponseWriter, r *http.Request) {
+	filters, err := parseTransactionListFilters(r)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+	result, err := h.factory.Services.Transactions.ListMyTransactions(r.Context(), filters, h.getPaginationParams(r))
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+	if err := h.writeJSON(w, http.StatusOK, result, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
+// LedgerTotals returns confirmed deposits per ledger across all members.
+func (h *Handlers) LedgerTotals(w http.ResponseWriter, r *http.Request) {
+	totals, err := h.factory.Services.Transactions.LedgerTotals(r.Context())
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+	if err := h.writeJSON(w, http.StatusOK, totals, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
+func parseTransactionListFilters(r *http.Request) (dto.TransactionFilters, error) {
+	q := r.URL.Query()
+	filters := dto.TransactionFilters{}
+	if v := q.Get("member_id"); v != "" {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			return filters, &svc.APIError{Status: http.StatusBadRequest, Message: "invalid UUID for 'member_id'"}
+		}
+		filters.MemberID = &id
+	}
+	if v := q.Get("ledger_type"); v != "" {
+		filters.LedgerType = &v
+	}
+	if v := q.Get("type"); v != "" {
+		filters.Type = &v
+	}
+	if v := q.Get("status"); v != "" {
+		filters.Status = lo.ToPtr(dto.TransactionStatusType(v))
+	}
+	if v := q.Get("search"); v != "" {
+		filters.Search = &v
+	}
+	return filters, nil
+}

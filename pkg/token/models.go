@@ -16,12 +16,15 @@ const (
 	RefreshTokenName = "refresh_token"
 	AccessTokenName  = "access_token"
 	SetPasswordToken = "set_password_token"
+	AccessTokenType  = "access"
+	RefreshTokenType = "refresh"
 
 	JWTTypeMember = "member"
 	JWTTypeAdmin  = "admin"
 )
 
 type CreatetokenParams struct {
+	Type        string
 	ID          uuid.UUID
 	Email       string
 	Roles       []string

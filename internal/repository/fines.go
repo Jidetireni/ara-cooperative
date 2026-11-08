@@ -29,6 +29,7 @@ func NewFineRepository(db *sqlx.DB) *FineRepository {
 // PopulatedFine contains fine with joined transaction, status, and member data
 type PopulatedFine struct {
 	Fine
+	Member      Member
 	Transaction *PopulatedTransaction
 }
 
@@ -63,7 +64,7 @@ type populatedFineFlat struct {
 	MbFirstName      string     `json:"mb_first_name"`
 	MbLastName       string     `json:"mb_last_name"`
 	MbSlug           string     `json:"mb_slug"`
-	MbPhone          string     `json:"mb_phone"`
+	MbPhone          *string    `json:"mb_phone"`
 	MbAddress        *string    `json:"mb_address"`
 	MbNextOfKinName  *string    `json:"mb_next_of_kin_name"`
 	MbNextOfKinPhone *string    `json:"mb_next_of_kin_phone"`
@@ -171,8 +172,9 @@ func (f *FineRepository) buildPopulatedQuery(filter FineRepositoryFilter, opts Q
 	builder = f.applyFilter(builder, filter)
 
 	if queryType != QueryTypeCount {
-		if opts.Sort == nil {
-			opts.Sort = lo.ToPtr("f.created_at:desc")
+		opts.Sort, err = SortFor(opts.Sort, "f")
+		if err != nil {
+			return "", nil, err
 		}
 		builder, err = ApplyPagination(builder, opts)
 		if err != nil {
@@ -323,7 +325,7 @@ func (f *FineRepository) mapFlatToPopulated(flat *populatedFineFlat) *PopulatedF
 		FirstName:      flat.MbFirstName,
 		LastName:       flat.MbLastName,
 		Slug:           flat.MbSlug,
-		Phone:          flat.MbPhone,
+		Phone:          ToNullString(flat.MbPhone),
 		Address:        ToNullString(flat.MbAddress),
 		NextOfKinName:  ToNullString(flat.MbNextOfKinName),
 		NextOfKinPhone: ToNullString(flat.MbNextOfKinPhone),
@@ -334,7 +336,8 @@ func (f *FineRepository) mapFlatToPopulated(flat *populatedFineFlat) *PopulatedF
 	}
 
 	populated := &PopulatedFine{
-		Fine: fine,
+		Fine:   fine,
+		Member: member,
 	}
 
 	var status TransactionStatus
@@ -374,11 +377,13 @@ func (f *FineRepository) MapRepositoryToDTOModel(populated *PopulatedFine) *dto.
 	}
 
 	result := &dto.Fine{
-		ID:       populated.ID,
-		Amount:   populated.Amount,
-		Reason:   populated.Reason,
-		Deadline: populated.Deadline,
-		Paid:     populated.PaidAt.Valid,
+		ID:        populated.ID,
+		Amount:    populated.Amount,
+		Reason:    populated.Reason,
+		Deadline:  populated.Deadline,
+		Paid:      populated.PaidAt.Valid,
+		Member:    f.transactionRepository.memberRepository.MapRepositoryToDTOModel(&populated.Member),
+		CreatedAt: populated.CreatedAt,
 	}
 
 	if populated.Transaction != nil {

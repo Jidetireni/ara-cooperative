@@ -1,11 +1,14 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
+	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 	"github.com/Jidetireni/ara-cooperative/pkg/logger"
 	"github.com/Jidetireni/ara-cooperative/pkg/token"
+	"github.com/google/uuid"
 )
 
 // TODO: add more midddleware, rate limiting,
@@ -13,12 +16,18 @@ import (
 type Middleware struct {
 	TokenSvc *token.Jwt
 	Logger   *logger.Logger
+	Identity IdentityLoader
 }
 
-func New(tokenSvc *token.Jwt, logger *logger.Logger) *Middleware {
+type IdentityLoader interface {
+	LoadIdentity(context.Context, uuid.UUID) (*users.UserContextValue, error)
+}
+
+func New(tokenSvc *token.Jwt, logger *logger.Logger, identity IdentityLoader) *Middleware {
 	return &Middleware{
 		TokenSvc: tokenSvc,
 		Logger:   logger,
+		Identity: identity,
 	}
 }
 

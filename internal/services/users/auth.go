@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -22,14 +23,19 @@ func (u *User) generateUserSession(ctx context.Context, user *repository.User, t
 	}
 
 	roleNames := lo.Map(roles, func(r repository.Role, _ int) string { return r.Name })
-	permissions, err := u.PermissionRepo.List(ctx, &repository.PermissionRepositoryFilter{
-		UserID: &user.ID,
-	})
+	authUser, err := u.authUser(ctx, user, roleNames)
 	if err != nil {
 		return nil, "", err
 	}
 
-	permSlugs := lo.Map(permissions, func(p repository.Permission, _ int) string { return p.Slug })
+	permissions, err := u.PermissionRepo.List(ctx, &repository.PermissionRepositoryFilter{
+		UserID: &user.ID,
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("load session permissions: %w", err)
+	}
+
+	permSlugs := effectivePermissions(roleNames, permissions)
 	tokenPairs, err := u.TokenPkg.GenerateTokenPair(&token.TokenPairParams{
 		ID:          user.ID,
 		Email:       user.Email,
@@ -54,10 +60,7 @@ func (u *User) generateUserSession(ctx context.Context, user *repository.User, t
 	}
 
 	return &dto.AuthResponse{
-		User: &dto.AuthUser{
-			ID:    user.ID,
-			Email: user.Email,
-		},
+		User:        authUser,
 		AccessToken: tokenPairs.AccessToken,
 	}, tokenPairs.RefreshToken, nil
 }

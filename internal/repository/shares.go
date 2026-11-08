@@ -62,7 +62,7 @@ type populatedShareFlat struct {
 	MbFirstName      string     `json:"mb_first_name"`
 	MbLastName       string     `json:"mb_last_name"`
 	MbSlug           string     `json:"mb_slug"`
-	MbPhone          string     `json:"mb_phone"`
+	MbPhone          *string    `json:"mb_phone"`
 	MbAddress        *string    `json:"mb_address"`
 	MbNextOfKinName  *string    `json:"mb_next_of_kin_name"`
 	MbNextOfKinPhone *string    `json:"mb_next_of_kin_phone"`
@@ -179,8 +179,9 @@ func (s *ShareRepository) buildPopulatedQuery(filter ShareRepositoryFilter, opts
 	builder = s.applyFilter(builder, filter)
 
 	if queryType != QueryTypeCount {
-		if opts.Sort == nil {
-			opts.Sort = lo.ToPtr("s.created_at:desc")
+		opts.Sort, err = SortFor(opts.Sort, "s")
+		if err != nil {
+			return "", nil, err
 		}
 		builder, err = ApplyPagination(builder, opts)
 		if err != nil {
@@ -296,45 +297,6 @@ func (s *ShareRepository) CountTotalSharesPurchased(ctx context.Context, filter 
 	return &total, nil
 }
 
-func (s *ShareRepository) CreateUnitPrice(ctx context.Context, price int64, tx *sqlx.Tx) error {
-	builder := s.psql.Insert("share_unit_prices").
-		Columns("price").
-		Values(price).
-		Suffix("RETURNING *")
-
-	query, args, err := builder.ToSql()
-	if err != nil {
-		return err
-	}
-
-	if tx != nil {
-		_, err = tx.ExecContext(ctx, query, args...)
-		return err
-	}
-
-	_, err = s.db.ExecContext(ctx, query, args...)
-	return err
-}
-
-func (s *ShareRepository) GetUnitPrice(ctx context.Context) (int64, error) {
-	builder := s.psql.Select("price").
-		From("share_unit_prices").
-		OrderBy("created_at DESC").
-		Limit(1)
-
-	query, args, err := builder.ToSql()
-	if err != nil {
-		return 0, err
-	}
-
-	var price int64
-	if err := s.db.GetContext(ctx, &price, query, args...); err != nil {
-		return 0, err
-	}
-
-	return price, nil
-}
-
 func (s *ShareRepository) mapFlatToPopulated(flat *populatedShareFlat) *PopulatedShare {
 	share := Share{
 		ID:            flat.ShareID,
@@ -350,7 +312,7 @@ func (s *ShareRepository) mapFlatToPopulated(flat *populatedShareFlat) *Populate
 		FirstName:      flat.MbFirstName,
 		LastName:       flat.MbLastName,
 		Slug:           flat.MbSlug,
-		Phone:          flat.MbPhone,
+		Phone:          ToNullString(flat.MbPhone),
 		Address:        ToNullString(flat.MbAddress),
 		NextOfKinName:  ToNullString(flat.MbNextOfKinName),
 		NextOfKinPhone: ToNullString(flat.MbNextOfKinPhone),

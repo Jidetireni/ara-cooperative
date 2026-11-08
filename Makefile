@@ -1,7 +1,12 @@
 API_CONTAINER_NAME=ara-api
 API_SERVICE_NAME=api
+.DEFAULT_GOAL := build/api
 
-.PHONY:
+.PHONY: owner/bootstrap
+
+## owner/bootstrap: create or restore setup for the configured owner without seeding data
+owner/bootstrap:
+	go run ./cmd/owner
 
 ## build/api: build api application binary
 build/api:
