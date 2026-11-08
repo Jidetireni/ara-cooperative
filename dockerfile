@@ -11,7 +11,7 @@ RUN go mod download
 
 # Install required tools
 RUN go install github.com/air-verse/air@latest
-RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+RUN go install github.com/pressly/goose/v3/cmd/goose@v3.26.0
 RUN go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 
 # Copy the rest of the application

@@ -700,6 +700,8 @@ For logs use `docker compose logs -f api`; stop the stack with `docker compose s
 
 Local development uses `dockerfile` and Air; it does not run migrations automatically. The dedicated deployment file is `deploy.dockerfile`. It builds the API binary and runs `goose up && exec /app/api` at container startup. A failed migration prevents API startup.
 
+Both images pin the Goose CLI to `v3.26.0`, which is compatible with their Go 1.25.2 builder. Keep migration tooling pinned when changing builder versions.
+
 In Railway service variables, set `RAILWAY_DOCKERFILE_PATH=deploy.dockerfile` to select it; see [Railway's custom Dockerfile documentation](https://docs.railway.com/builds/dockerfiles#custom-dockerfile-path). Leave the start command unset so the image's entrypoint runs.
 
 `GOOSE_DRIVER=postgres` and `GOOSE_MIGRATION_DIR=/app/migrations/schema` match the deployment image. Set `GOOSE_DBSTRING` to the database connection URL used by `DB_URL`; credentials are supplied at runtime. The image includes the schema migrations under `/app/migrations/schema`. `.env` files are excluded from the Docker build context; supply application configuration through service variables, including `SHARE_UNIT_PRICE=50000`.

@@ -5,7 +5,7 @@ WORKDIR /app
 
 COPY go.mod go.sum ./
 RUN go mod download
-RUN CGO_ENABLED=0 go install github.com/pressly/goose/v3/cmd/goose@latest
+RUN CGO_ENABLED=0 go install github.com/pressly/goose/v3/cmd/goose@v3.26.0
 
 COPY . .
 RUN CGO_ENABLED=0 go build -buildvcs=false -o /out/api ./cmd/api
