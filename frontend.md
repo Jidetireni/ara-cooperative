@@ -698,7 +698,9 @@ For logs use `docker compose logs -f api`; stop the stack with `docker compose s
 
 ## Deployment Image and Migrations
 
-Local development uses `dockerfile` and Air; it does not run migrations automatically. The dedicated deployment file is `deploy.dockerfile`. It builds the API binary and runs `goose up && exec /app/api` at container startup. A failed migration prevents API startup.
+Local development uses `dockerfile` and Air; it does not run migrations automatically. The dedicated deployment file is `deploy.dockerfile`. It builds the API and owner-bootstrap binaries. Startup runs `goose up`, then `/app/owner` when both `OWNER_EMAIL` and `OWNER_PASSWORD` are set, then starts `/app/api`. A failed migration or bootstrap prevents API startup.
+
+For a fresh deployed database, configure both owner credentials to initialize the owner at startup. Existing passwords and memberships are preserved across restarts; changing `OWNER_PASSWORD` does not reset an established password. Without both credentials, automatic bootstrap is skipped. Operators can run `/app/owner` explicitly inside the deployed container; with only `OWNER_EMAIL`, it prints a one-time setup code in that operator session. `ROOT_USER_*` does not bootstrap the owner.
 
 Both images pin the Goose CLI to `v3.26.0`, which is compatible with their Go 1.25.2 builder. Keep migration tooling pinned when changing builder versions.
 
