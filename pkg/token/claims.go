@@ -8,6 +8,7 @@ import (
 )
 
 type UserClaims struct {
+	Type        string    `json:"type"`
 	ID          uuid.UUID `json:"id"`
 	Email       string    `json:"email"`
 	Roles       []string  `json:"roles"`
@@ -22,6 +23,7 @@ func newUserClaims(params *CreatetokenParams) (*UserClaims, error) {
 	}
 
 	return &UserClaims{
+		Type:        params.Type,
 		ID:          params.ID,
 		Email:       params.Email,
 		Roles:       params.Roles,

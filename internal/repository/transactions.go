@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
@@ -33,6 +34,9 @@ type TransactionRepositoryFilter struct {
 	Rejected   *bool
 	Type       *TransactionType
 	LedgerType *LedgerType
+	// Search matches the member's name or number, the reference, or the
+	// description (case-insensitive). Needs the member join (mb).
+	Search *string
 }
 
 type PopulatedTransaction struct {
@@ -68,7 +72,7 @@ type populateTransactionFlat struct {
 	MbFirstName      string     `json:"mb_first_name"`
 	MbLastName       string     `json:"mb_last_name"`
 	MbSlug           string     `json:"mb_slug"`
-	MbPhone          string     `json:"mb_phone"`
+	MbPhone          *string    `json:"mb_phone"`
 	MbAddress        *string    `json:"mb_address"`
 	MbNextOfKinName  *string    `json:"mb_next_of_kin_name"`
 	MbNextOfKinPhone *string    `json:"mb_next_of_kin_phone"`
@@ -114,6 +118,20 @@ func (s *TransactionRepository) applyFilter(builder sq.SelectBuilder, filter Tra
 
 	if filter.LedgerType != nil {
 		builder = builder.Where(sq.Eq{"tr.ledger": *filter.LedgerType})
+	}
+
+	if filter.Search != nil {
+		if term := strings.TrimSpace(*filter.Search); term != "" {
+			pattern := "%" + likeEscaper.Replace(term) + "%"
+			builder = builder.Where(sq.Or{
+				sq.ILike{"mb.first_name": pattern},
+				sq.ILike{"mb.last_name": pattern},
+				sq.ILike{"mb.slug": pattern},
+				sq.Expr("(mb.first_name || ' ' || mb.last_name) ILIKE ?", pattern),
+				sq.ILike{"tr.reference": pattern},
+				sq.ILike{"tr.description": pattern},
+			})
+		}
 	}
 
 	return builder
@@ -172,8 +190,9 @@ func (s *TransactionRepository) buildQuery(filter TransactionRepositoryFilter, o
 	builder = s.applyFilter(builder, filter)
 
 	if queryType != QueryTypeCount {
-		if opts.Sort == nil {
-			opts.Sort = lo.ToPtr("tr.created_at:desc")
+		opts.Sort, err = SortFor(opts.Sort, "tr")
+		if err != nil {
+			return "", nil, err
 		}
 		builder, err = ApplyPagination(builder, opts)
 		if err != nil {
@@ -433,7 +452,7 @@ func (s *TransactionRepository) mapFlatToPopulated(flat *populateTransactionFlat
 		FirstName:      flat.MbFirstName,
 		LastName:       flat.MbLastName,
 		Slug:           flat.MbSlug,
-		Phone:          flat.MbPhone,
+		Phone:          ToNullString(flat.MbPhone),
 		Address:        ToNullString(flat.MbAddress),
 		NextOfKinName:  ToNullString(flat.MbNextOfKinName),
 		NextOfKinPhone: ToNullString(flat.MbNextOfKinPhone),
@@ -461,6 +480,7 @@ func (t *TransactionRepository) MapRepositoryToDTOModel(txn *PopulatedTransactio
 			LedgerType:  *t.mapLedgerToDTOModel(&txn.Transaction.Ledger),
 			Status:      *t.mapStatusToDTOModel(&txn.Status),
 			Member:      *t.memberRepository.MapRepositoryToDTOModel(&txn.Member),
+			CreatedAt:   txn.Transaction.CreatedAt.Time,
 		}
 	}
 

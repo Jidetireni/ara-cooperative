@@ -23,7 +23,7 @@ func (t *Transaction) ChargeFine(ctx context.Context, input *dto.FineInput) (*dt
 
 	_, err := t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{
 		ID: &input.MemberID,
-	})
+	}, nil)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, svc.ErrNotFound()

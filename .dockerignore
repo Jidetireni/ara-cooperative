@@ -1,1 +1,7 @@
-.gitignore
+.git
+.env
+.env.*
+!.env.example
+tmp
+bin
+logs

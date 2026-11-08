@@ -63,7 +63,7 @@ func (s *Seed) createUserWithMember(ctx context.Context, seedUser SeedMember, ro
 		Slug:      memberSlug,
 		FirstName: seedUser.FirstName,
 		LastName:  seedUser.LastName,
-		Phone:     seedUser.Phone,
+		Phone:     sql.NullString{String: seedUser.Phone, Valid: seedUser.Phone != ""},
 		Address: sql.NullString{
 			String: seedUser.Address,
 			Valid:  seedUser.Address != "",

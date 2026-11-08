@@ -23,13 +23,40 @@ func (h *Handlers) CreateMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createdMember, err := h.factory.Services.Member.Create(r.Context(), input)
+	invitation, err := h.factory.Services.Member.Create(r.Context(), input)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return
 	}
 
-	h.writeJSON(w, http.StatusCreated, createdMember, http.Header{})
+	if err := h.writeJSON(w, http.StatusCreated, invitation, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
+func (h *Handlers) ListMembers(w http.ResponseWriter, r *http.Request) {
+	permissions := []constants.UserPermissions{constants.MemberReadALL}
+	if !users.HasAdminPermissions(r.Context(), permissions) {
+		h.errorResponse(w, r, svc.AdminForbiddenError(permissions))
+		return
+	}
+
+	filters, err := h.parseMemberFilters(r)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	options := h.getPaginationParams(r)
+
+	members, err := h.factory.Services.Member.List(r.Context(), filters, options)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+
+	if err := h.writeJSON(w, http.StatusOK, members, nil); err != nil {
+		h.logError(r, err)
+	}
 }
 
 func (h *Handlers) MemberBySlug(w http.ResponseWriter, r *http.Request) {
@@ -41,4 +68,30 @@ func (h *Handlers) MemberBySlug(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeJSON(w, http.StatusOK, member, nil)
+}
+
+func (h *Handlers) CurrentMember(w http.ResponseWriter, r *http.Request) {
+	member, err := h.factory.Services.Member.Current(r.Context())
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	if err := h.writeJSON(w, http.StatusOK, member, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
+func (h *Handlers) UpdateMemberProfile(w http.ResponseWriter, r *http.Request) {
+	var input dto.UpdateMemberProfileInput
+	if !h.decodeAndValidate(w, r, &input) {
+		return
+	}
+	member, err := h.factory.Services.Member.UpdateProfile(r.Context(), input)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	if err := h.writeJSON(w, http.StatusOK, member, nil); err != nil {
+		h.logError(r, err)
+	}
 }

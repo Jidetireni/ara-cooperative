@@ -20,12 +20,13 @@ const (
 )
 
 const (
+	RoleOwner  = "owner"
 	RoleAdmin  = "admin"
 	RoleMember = "member"
 )
 
 var RolePermissions = map[string][]UserPermissions{
-	RoleAdmin: {
+	RoleOwner: {
 		MemberWriteALL,
 		MemberReadALL,
 		LoanApply,
@@ -33,8 +34,14 @@ var RolePermissions = map[string][]UserPermissions{
 		LedgerReadALL,
 		RoleAssign,
 	},
-	RoleMember: {
+	RoleAdmin: {
+		MemberWriteALL,
 		MemberReadALL,
+		LoanApply,
+		LoanApprove,
+		LedgerReadALL,
+	},
+	RoleMember: {
 		LoanApply,
 	},
 }

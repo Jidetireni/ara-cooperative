@@ -13,6 +13,9 @@ func main() {
 	if !cfg.IsDev {
 		log.Fatal("Seeding is only allowed in development environment")
 	}
+	if cfg.Server.RootUserEmail == "" || cfg.Server.RootUserPassword == "" {
+		log.Fatal("ROOT_USER_EMAIL and ROOT_USER_PASSWORD are required for development seeding")
+	}
 
 	seeder, cleanup, err := seed.NewSeeder(cfg)
 	if err != nil {

@@ -123,8 +123,10 @@ func (s *Seed) CreateRootUser() error {
 		return nil
 	}
 
-	// Get all roles for root user
-	roles, err := s.RolesRepo.List(ctx, &repository.RoleRepositoryFilter{})
+	// Development seed accounts receive admin access; ownership uses the dedicated bootstrap command.
+	roles, err := s.RolesRepo.List(ctx, &repository.RoleRepositoryFilter{
+		Name: []string{constants.RoleAdmin},
+	})
 	if err != nil {
 		return fmt.Errorf("fetch roles: %w", err)
 	}
@@ -132,7 +134,10 @@ func (s *Seed) CreateRootUser() error {
 		return fmt.Errorf("no roles found; ensure roles are seeded before creating root user")
 	}
 
-	permissions, err := s.PermissionRepo.List(ctx, &repository.PermissionRepositoryFilter{})
+	permissionSlugs := lo.Map(constants.RolePermissions[constants.RoleAdmin], func(permission constants.UserPermissions, _ int) string {
+		return string(permission)
+	})
+	permissions, err := s.PermissionRepo.List(ctx, &repository.PermissionRepositoryFilter{Slug: permissionSlugs})
 	if err != nil {
 		return fmt.Errorf("fetch permissions: %w", err)
 	}
@@ -171,7 +176,7 @@ func (s *Seed) CreateRootUser() error {
 		return fmt.Errorf("create root user: %w", err)
 	}
 
-	// Assign all roles to root user
+	// Assign the admin role without creating a personal membership.
 	roleIDs := lo.Map(roles, func(r repository.Role, _ int) uuid.UUID {
 		return r.ID
 	})

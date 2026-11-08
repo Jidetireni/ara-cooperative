@@ -3,7 +3,9 @@ package repository
 import (
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -35,6 +37,33 @@ type SortResult struct {
 	Order  SortOrder
 }
 
+// ErrInvalidSort marks a client sort value that lists cannot use.
+var ErrInvalidSort = errors.New("invalid sort")
+
+// sortableColumn is the only column lists can be ordered by: the pagination
+// cursor encodes it, so any other order would break paging.
+const sortableColumn = "created_at"
+
+// sortColumnPattern admits only plain or table-qualified identifiers, so a sort
+// value can never inject SQL into ORDER BY or the cursor condition.
+var sortColumnPattern = regexp.MustCompile(`^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$`)
+
+// SortFor turns a client sort ("created_at:asc" or "created_at:desc"; nil means
+// newest first) into the qualified column for the query's main table alias.
+// The column name always comes from the repository, never from the client.
+func SortFor(sort *string, alias string) (*string, error) {
+	order := "desc"
+	if sort != nil {
+		column, direction, ok := strings.Cut(strings.ToLower(strings.TrimSpace(*sort)), ":")
+		if !ok || column != sortableColumn || (direction != "asc" && direction != "desc") {
+			return nil, fmt.Errorf("%w: use created_at:asc or created_at:desc", ErrInvalidSort)
+		}
+		order = direction
+	}
+	qualified := fmt.Sprintf("%s.%s:%s", alias, sortableColumn, order)
+	return &qualified, nil
+}
+
 func parseSort(sort *string) (SortResult, error) {
 	if sort == nil {
 		return SortResult{
@@ -43,13 +72,15 @@ func parseSort(sort *string) (SortResult, error) {
 		}, nil
 	}
 
-	//
 	parts := strings.Split(*sort, ":")
 	if len(parts) != 2 {
-		return SortResult{}, fmt.Errorf("invalid sort format")
+		return SortResult{}, fmt.Errorf("%w: invalid sort format", ErrInvalidSort)
 	}
 	column := parts[0]
 	Order := parts[1]
+	if !sortColumnPattern.MatchString(column) {
+		return SortResult{}, fmt.Errorf("%w: invalid sort column", ErrInvalidSort)
+	}
 
 	switch Order {
 	case "asc":
@@ -64,8 +95,12 @@ func parseSort(sort *string) (SortResult, error) {
 		}, nil
 	}
 
-	return SortResult{}, fmt.Errorf("invalid sort order: %s", Order)
+	return SortResult{}, fmt.Errorf("%w: invalid sort order: %s", ErrInvalidSort, Order)
 }
+
+// ErrInvalidCursor marks a pagination cursor the client sent that cannot be
+// decoded, so services can answer 400 instead of 500.
+var ErrInvalidCursor = errors.New("invalid cursor")
 
 func decodeCursor(cursor string) (time.Time, uuid.UUID, error) {
 	decoded, err := base64.StdEncoding.DecodeString(cursor)
@@ -111,7 +146,7 @@ func ApplyPagination(builder sq.SelectBuilder, opts QueryOptions) (sq.SelectBuil
 	if opts.Cursor != nil {
 		cursorTime, cursorID, err := decodeCursor(*opts.Cursor)
 		if err != nil {
-			return builder, err
+			return builder, fmt.Errorf("%w: %w", ErrInvalidCursor, err)
 		}
 
 		switch sortResult.Order {

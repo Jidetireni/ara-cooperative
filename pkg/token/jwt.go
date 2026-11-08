@@ -34,19 +34,26 @@ func (j *Jwt) createToken(params *CreatetokenParams) (string, *UserClaims, error
 	return tokenString, claims, nil
 }
 
+// ValidateToken accepts only access tokens for bearer authentication.
 func (j *Jwt) ValidateToken(tokenString string) (*UserClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &UserClaims{}, func(token *jwt.Token) (any, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("invalid token singing method")
-		}
-		return []byte(j.SecretKey), nil
-	})
+	token, err := jwt.ParseWithClaims(
+		tokenString,
+		&UserClaims{},
+		func(token *jwt.Token) (any, error) {
+			return []byte(j.SecretKey), nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithExpirationRequired(),
+	)
 
 	if err != nil {
 		return nil, err
 	}
 
 	if claims, ok := token.Claims.(*UserClaims); ok && token.Valid {
+		if claims.Type != AccessTokenType {
+			return nil, fmt.Errorf("invalid token type")
+		}
 		return claims, nil
 	}
 
@@ -61,6 +68,7 @@ func (j *Jwt) GenerateTokenPair(params *TokenPairParams) (*TokenPair, error) {
 	}
 
 	accessToken, _, err := j.createToken(&CreatetokenParams{
+		Type:        AccessTokenType,
 		ID:          params.ID,
 		Email:       params.Email,
 		Roles:       params.Roles,
@@ -73,6 +81,7 @@ func (j *Jwt) GenerateTokenPair(params *TokenPairParams) (*TokenPair, error) {
 
 	refreshExpiry := RefreshTokenExpirationTime
 	refreshToken, _, err := j.createToken(&CreatetokenParams{
+		Type:        RefreshTokenType,
 		ID:          params.ID,
 		Email:       params.Email,
 		Roles:       params.Roles,

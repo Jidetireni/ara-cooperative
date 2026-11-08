@@ -20,6 +20,8 @@ type UserContextValue struct {
 
 	IsAuthenticatedAsMember bool
 	IsAuthenticatedAsAdmin  bool
+	IsAuthenticatedAsOwner  bool
+	HasActiveMembership     bool
 }
 
 func NewContextWithUser(ctx context.Context, user *UserContextValue) context.Context {

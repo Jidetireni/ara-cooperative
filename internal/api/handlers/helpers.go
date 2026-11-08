@@ -123,3 +123,37 @@ func (h *Handlers) parseFineFilters(r *http.Request) (dto.FineFilter, error) {
 
 	return filters, nil
 }
+
+func (h *Handlers) parseMemberFilters(r *http.Request) (dto.MemberFilter, error) {
+	q := r.URL.Query()
+	filters := dto.MemberFilter{}
+
+	if activeStr := q.Get("is_active"); activeStr != "" {
+		isActive, err := strconv.ParseBool(activeStr)
+		if err != nil {
+			return filters, &svc.APIError{
+				Status:  http.StatusBadRequest,
+				Message: "invalid boolean for 'is_active'",
+			}
+		}
+		filters.IsActive = &isActive
+	}
+
+	if search := q.Get("search"); search != "" {
+		filters.Search = &search
+	}
+
+	return filters, nil
+}
+
+// parsePositiveInt64 reads a whole number greater than zero (amounts in kobo).
+func parsePositiveInt64(value string) (int64, error) {
+	n, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	if n <= 0 {
+		return 0, strconv.ErrRange
+	}
+	return n, nil
+}

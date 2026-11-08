@@ -32,6 +32,7 @@ type TokenRepositoryFilter struct {
 	IsValid   *bool
 	IsExpired *bool // Use true to filter for expired tokens
 	IsDeleted *bool
+	ForUpdate bool
 }
 
 // buildQuery builds a squirrel query based on the provided filter and query type.
@@ -77,6 +78,9 @@ func (tr *TokenRepository) buildQuery(filter *TokenRepositoryFilter, queryType Q
 		}
 	}
 
+	if filter.ForUpdate && queryType == QueryTypeSelect {
+		builder = builder.Suffix("FOR UPDATE")
+	}
 	return builder, nil
 }
 
@@ -161,7 +165,7 @@ func (tr *TokenRepository) Validate(ctx context.Context, filter *TokenRepository
 }
 
 // GetTokenByID fetches a single token by its ID.
-func (tr *TokenRepository) Get(ctx context.Context, filter *TokenRepositoryFilter) (*Token, error) {
+func (tr *TokenRepository) Get(ctx context.Context, filter *TokenRepositoryFilter, tx *sqlx.Tx) (*Token, error) {
 	// Use buildQuery with QueryTypeSelect.
 	builder, err := tr.buildQuery(filter, QueryTypeSelect)
 	if err != nil {
@@ -173,6 +177,13 @@ func (tr *TokenRepository) Get(ctx context.Context, filter *TokenRepositoryFilte
 	}
 
 	var token Token
+	if tx != nil {
+		err = tx.GetContext(ctx, &token, query, args...)
+		return &token, err
+	}
+	if filter.ForUpdate {
+		return nil, errors.New("row locking requires a transaction")
+	}
 	err = tr.db.GetContext(ctx, &token, query, args...)
 	if err != nil {
 		return nil, err

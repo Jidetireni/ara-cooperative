@@ -44,7 +44,7 @@ func (e *Email) Send(ctx context.Context, input *SendEmailInput) error {
 	m.SetBody("text/html", input.Body)
 
 	d := gomail.NewDialer(SMTPHost, SMTPPort, ARAFromEmail, e.config.Email.Password)
-	d.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+	d.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, ServerName: SMTPHost}
 
 	if err := d.DialAndSend(m); err != nil {
 		return fmt.Errorf("failed to send email: %w", err)

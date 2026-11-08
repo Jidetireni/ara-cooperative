@@ -11,7 +11,6 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
-	"github.com/Jidetireni/ara-cooperative/pkg/cache"
 	"github.com/Jidetireni/ara-cooperative/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -23,10 +22,6 @@ var (
 	_ MemberRepository      = (*repository.MemberRepository)(nil)
 	_ ShareRepository       = (*repository.ShareRepository)(nil)
 	_ FineRepository        = (*repository.FineRepository)(nil)
-)
-
-var (
-	_ RedisPkg = (*cache.Redis)(nil)
 )
 
 type TransactionRepository interface {
@@ -41,16 +36,15 @@ type TransactionRepository interface {
 }
 
 type MemberRepository interface {
-	Get(ctx context.Context, filter repository.MemberRepositoryFilter) (*repository.Member, error)
+	Get(ctx context.Context, filter repository.MemberRepositoryFilter, tx *sqlx.Tx) (*repository.Member, error)
 	Update(ctx context.Context, member *repository.Member, tx *sqlx.Tx) (*repository.Member, error)
 }
 
 type ShareRepository interface {
 	Create(ctx context.Context, share repository.Share, tx *sqlx.Tx) (*repository.Share, error)
 	CountTotalSharesPurchased(ctx context.Context, filter repository.ShareRepositoryFilter) (*repository.SharesTotalRows, error)
-	CreateUnitPrice(ctx context.Context, price int64, tx *sqlx.Tx) error
-	GetUnitPrice(ctx context.Context) (int64, error)
 	GetPopulated(ctx context.Context, filter repository.ShareRepositoryFilter, tx *sqlx.Tx) (*repository.PopulatedShare, error)
+	ListPopulated(ctx context.Context, filter repository.ShareRepositoryFilter, opts repository.QueryOptions) (*repository.ListResult[repository.PopulatedShare], error)
 	MapRepositoryToDTOModel(populated *repository.PopulatedShare) *dto.Shares
 }
 
@@ -62,30 +56,24 @@ type FineRepository interface {
 	ListPopulated(ctx context.Context, filter repository.FineRepositoryFilter, opts repository.QueryOptions) (*repository.ListResult[repository.PopulatedFine], error)
 }
 
-type RedisPkg interface {
-	SetPrimitive(ctx context.Context, key string, value string, expiration time.Duration) error
-	GetPrimitive(ctx context.Context, key string) (string, error)
-	Delete(ctx context.Context, key string) error
-}
-
 type Transaction struct {
 	DB              *sqlx.DB
 	TransactionRepo TransactionRepository
 	MemberRepo      MemberRepository
 	ShareRepo       ShareRepository
 	FineRepo        FineRepository
-	RedisPkg        RedisPkg
+	UnitPrice       int64
 	Logger          *logger.Logger
 }
 
-func New(db *sqlx.DB, transRepo TransactionRepository, memberRepo MemberRepository, shareRepo ShareRepository, fineRepo FineRepository, redisPkg RedisPkg, logger *logger.Logger) *Transaction {
+func New(db *sqlx.DB, transRepo TransactionRepository, memberRepo MemberRepository, shareRepo ShareRepository, fineRepo FineRepository, unitPrice int64, logger *logger.Logger) *Transaction {
 	return &Transaction{
 		DB:              db,
 		TransactionRepo: transRepo,
 		MemberRepo:      memberRepo,
 		ShareRepo:       shareRepo,
 		FineRepo:        fineRepo,
-		RedisPkg:        redisPkg,
+		UnitPrice:       unitPrice,
 		Logger:          logger,
 	}
 }
@@ -184,7 +172,7 @@ func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dt
 			}
 			member, err := t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{
 				ID: lo.ToPtr(txn.MemberID),
-			})
+			}, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -294,7 +282,7 @@ func (t *Transaction) processDeposit(ctx context.Context, input dto.Transactions
 func (t *Transaction) getMemberByUserID(ctx context.Context, userID uuid.UUID) (*repository.Member, error) {
 	return t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{
 		UserID: &userID,
-	})
+	}, nil)
 }
 
 // Helper method to create transaction with status

@@ -1,8 +1,8 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -49,8 +49,8 @@ func NewServer() (*Server, func(), error) {
 	return server, cleanup, nil
 }
 
-func (s *Server) Start() {
-	fmt.Printf(" Server running on http://localhost:%s%s\n", s.Config.Server.Port, "/api/v1")
+func (s *Server) Start() error {
+	s.Factory.Pkgs.Logger.Sugar.Infow("server starting", "port", s.Config.Server.Port, "base_path", "/api/v1")
 
 	srv := &http.Server{
 		Addr:         ":" + s.Config.Server.Port,
@@ -60,7 +60,8 @@ func (s *Server) Start() {
 		IdleTimeout:  time.Minute,
 	}
 
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serve API: %w", err)
 	}
+	return nil
 }
