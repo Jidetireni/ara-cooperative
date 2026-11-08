@@ -110,33 +110,28 @@ func TestInitializeOwnerSplit(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	client := New("sk_test_split", server.URL)
+	// A NGN 50 owner share: below the NGN 100 minimum of a dynamic flat split.
 	_, err := client.InitializeTransaction(context.Background(), InitializeInput{
-		Email: "member@example.com", Amount: 106_599, Currency: "NGN", Reference: "owner-split",
-		Split: &Split{
-			Type: SplitTypeFlat, BearerType: BearerTypeSubaccount, BearerSubaccount: "ACCT_owner",
-			Subaccounts: []SplitSubaccount{{Subaccount: "ACCT_owner", Share: 6_599}},
-		},
+		Email: "member@example.com", Amount: 105_000, Currency: "NGN", Reference: "owner-split",
+		Subaccount: "ACCT_owner", TransactionCharge: 100_000, Bearer: BearerSubaccount,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	body := <-observed
-	var split struct {
-		Type             string `json:"type"`
-		BearerType       string `json:"bearer_type"`
-		BearerSubaccount string `json:"bearer_subaccount"`
-		Subaccounts      []struct {
-			Subaccount string `json:"subaccount"`
-			Share      int64  `json:"share"`
-		} `json:"subaccounts"`
+	var got struct {
+		Subaccount        string `json:"subaccount"`
+		TransactionCharge int64  `json:"transaction_charge"`
+		Bearer            string `json:"bearer"`
 	}
-	if err := json.Unmarshal(body["split"], &split); err != nil {
+	raw, _ := json.Marshal(body)
+	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	if split.Type != "flat" || split.BearerType != "subaccount" || split.BearerSubaccount != "ACCT_owner" {
-		t.Fatalf("checkout did not identify the owner as fee bearer: %+v", split)
+	if got.Subaccount != "ACCT_owner" || got.TransactionCharge != 100_000 || got.Bearer != "subaccount" {
+		t.Fatalf("checkout did not route the owner share: %+v", got)
 	}
-	if len(split.Subaccounts) != 1 || split.Subaccounts[0].Subaccount != "ACCT_owner" || split.Subaccounts[0].Share != 6_599 {
-		t.Fatalf("checkout did not allocate maintenance plus processing to owner: %+v", split)
+	if _, ok := body["split"]; ok {
+		t.Fatal("checkout must not send a dynamic split")
 	}
 }

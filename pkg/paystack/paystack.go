@@ -28,12 +28,9 @@ const (
 	StatusAbandoned = "abandoned"
 	StatusReversed  = "reversed"
 
-	// SplitTypeFlat shares are fixed kobo amounts.
-	SplitTypeFlat = "flat"
-	// BearerTypeAccount: the main account pays Paystack's fee from its share.
-	BearerTypeAccount = "account"
-	// BearerTypeSubaccount: the named subaccount pays Paystack's fee from its share.
-	BearerTypeSubaccount = "subaccount"
+	// BearerSubaccount makes the transaction's subaccount pay Paystack's fee
+	// from its share.
+	BearerSubaccount = "subaccount"
 
 	requestTimeout = 15 * time.Second
 	maxBodySize    = 1 << 20
@@ -83,21 +80,6 @@ type Metadata struct {
 	CancelAction     string `json:"cancel_action,omitempty"`
 }
 
-// SplitSubaccount sends Share (kobo, for flat splits) to a subaccount.
-type SplitSubaccount struct {
-	Subaccount string `json:"subaccount"`
-	Share      int64  `json:"share"`
-}
-
-// Split is a dynamic per-transaction split. The main account keeps whatever
-// the subaccounts do not receive.
-type Split struct {
-	Type             string            `json:"type"`
-	BearerType       string            `json:"bearer_type"`
-	BearerSubaccount string            `json:"bearer_subaccount,omitempty"`
-	Subaccounts      []SplitSubaccount `json:"subaccounts"`
-}
-
 type InitializeInput struct {
 	Email       string   `json:"email"`
 	Amount      int64    `json:"amount"` // kobo
@@ -105,7 +87,13 @@ type InitializeInput struct {
 	Reference   string   `json:"reference"`
 	CallbackURL string   `json:"callback_url,omitempty"`
 	Metadata    Metadata `json:"metadata"`
-	Split       *Split   `json:"split,omitempty"`
+	// Subaccount receives Amount minus TransactionCharge. TransactionCharge
+	// (kobo) goes to the main account and overrides the subaccount's default
+	// percentage. Unlike a dynamic flat split, which needs at least NGN 100
+	// per subaccount, this accepts small subaccount shares.
+	Subaccount        string `json:"subaccount,omitempty"`
+	TransactionCharge int64  `json:"transaction_charge,omitempty"`
+	Bearer            string `json:"bearer,omitempty"`
 }
 
 type InitializeResult struct {
