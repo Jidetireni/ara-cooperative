@@ -1,0 +1,15 @@
+Hello {{.FirstName}},
+
+You've been invited to become a member of Ara Cooperative.
+{{if .NeedsPasswordSetup}}
+Set your password here (the link works once and expires in {{.ExpiresInMinutes}} minutes):
+{{.ActionURL}}
+{{else}}
+Sign in with your existing password to continue:
+{{.ActionURL}}
+{{end}}
+After signing in, complete your profile and pay the membership fee. Your membership becomes active once the payment is confirmed.
+
+You received this because an administrator invited this address. If you weren't expecting it, you can ignore this email.
+
+Ara Cooperative

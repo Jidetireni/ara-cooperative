@@ -2,58 +2,71 @@ package email
 
 import (
 	"bytes"
+	"embed"
 	"fmt"
-	"html/template"
-	"path/filepath"
-	"sync"
-
-	lru "github.com/hashicorp/golang-lru"
+	htmltemplate "html/template"
+	texttemplate "text/template"
 )
 
-type EmailTemplateCache struct {
-	dir string
-	lru *lru.Cache // holds *template.Template
-	mu  sync.Mutex
+// Templates are compiled into the binary so every deployment carries them.
+//
+//go:embed templates/*.html templates/*.txt
+var templateFiles embed.FS
+
+// Templates holds every email in HTML (wrapped in the shared layout) and plain text.
+type Templates struct {
+	html map[EmailTemplateType]*htmltemplate.Template
+	text map[EmailTemplateType]*texttemplate.Template
 }
 
-func NewEmailTemplateCache(dir string, capacity int) (*EmailTemplateCache, error) {
-	lruCache, err := lru.New(capacity)
-	if err != nil {
-		return nil, err
+var templateTypes = []EmailTemplateType{EmailTemplateTypeMemberInvitation}
+
+// NewTemplates parses the embedded templates; it fails only if a template is malformed.
+func NewTemplates() (*Templates, error) {
+	t := &Templates{
+		html: make(map[EmailTemplateType]*htmltemplate.Template, len(templateTypes)),
+		text: make(map[EmailTemplateType]*texttemplate.Template, len(templateTypes)),
 	}
-	return &EmailTemplateCache{
-		dir: dir,
-		lru: lruCache,
-	}, nil
+	for _, name := range templateTypes {
+		page, err := htmltemplate.ParseFS(templateFiles, "templates/layout.html", "templates/"+string(name)+".html")
+		if err != nil {
+			return nil, fmt.Errorf("parse %s html: %w", name, err)
+		}
+		plain, err := texttemplate.ParseFS(templateFiles, "templates/"+string(name)+".txt")
+		if err != nil {
+			return nil, fmt.Errorf("parse %s text: %w", name, err)
+		}
+		t.html[name] = page
+		t.text[name] = plain
+	}
+	return t, nil
 }
 
-func (c *EmailTemplateCache) Get(name string) (*template.Template, error) {
-	if v, ok := c.lru.Get(name); ok {
-		return v.(*template.Template), nil
+// Render produces both parts of one email.
+func (t *Templates) Render(name EmailTemplateType, data any) (Rendered, error) {
+	page, ok := t.html[name]
+	if !ok {
+		return Rendered{}, fmt.Errorf("unknown email template %q", name)
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	// re-check under write lock
-	if v, ok := c.lru.Get(name); ok {
-		return v.(*template.Template), nil
+	var htmlOut, textOut bytes.Buffer
+	if err := page.ExecuteTemplate(&htmlOut, "layout", data); err != nil {
+		return Rendered{}, fmt.Errorf("render %s html: %w", name, err)
 	}
-	path := filepath.Join(c.dir, name)
-	tmpl, err := template.ParseFiles(path + ".html")
-	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+	if err := t.text[name].Execute(&textOut, data); err != nil {
+		return Rendered{}, fmt.Errorf("render %s text: %w", name, err)
 	}
-	c.lru.Add(name, tmpl)
-	return tmpl, nil
+	return Rendered{HTML: htmlOut.String(), Text: textOut.String()}, nil
 }
 
-func (c *EmailTemplateCache) Render(name EmailTemplateType, data any) (string, error) {
-	tmpl, err := c.Get(string(name))
+var defaultTemplates = func() *Templates {
+	t, err := NewTemplates()
 	if err != nil {
-		return "", err
+		panic(err) // embedded files are fixed at build time; covered by tests
 	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("exec %s: %w", name, err)
-	}
-	return buf.String(), nil
+	return t
+}()
+
+// Render uses the embedded templates.
+func Render(name EmailTemplateType, data any) (Rendered, error) {
+	return defaultTemplates.Render(name, data)
 }

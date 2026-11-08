@@ -19,7 +19,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	"github.com/samber/lo"
-	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -192,7 +191,6 @@ func (m *Member) Create(
 	link := baseURL.JoinPath("login")
 	link.RawQuery = ""
 	link.Fragment = ""
-	message := "Sign in with your existing password to continue your membership setup."
 	if needsSetup {
 		result.ExpiresAt = &expiresAt
 		link = baseURL.JoinPath("set-password")
@@ -200,19 +198,23 @@ func (m *Member) Create(
 		// A fragment keeps the setup secret out of HTTP access logs and referrers.
 		link.Fragment = "email=" + user.Email + "&token=" + rawToken
 		link.RawFragment = url.Values{"email": {user.Email}, "token": {rawToken}}.Encode()
-		message = "Choose your password using this one-time link. It expires in 30 minutes."
 	}
-	body := fmt.Sprintf("<p>Hello %s,</p><p>You have been invited to join the cooperative.</p>"+
-		"<p>%s</p><p><a href=\"%s\">Continue membership setup</a></p>"+
-		"<p>Your membership remains pending until the membership fee is verified.</p>",
-		html.EscapeString(member.FirstName), html.EscapeString(message), html.EscapeString(link.String()),
-	)
-	if err := m.Email.Send(ctx, &email.SendEmailInput{
-		To: user.Email, Subject: "Your cooperative membership invitation", Body: body,
-	}); err != nil {
+	message, deliveryErr := email.Render(email.EmailTemplateTypeMemberInvitation, email.MemberInvitationData{
+		FirstName:          member.FirstName,
+		ActionURL:          link.String(),
+		NeedsPasswordSetup: needsSetup,
+		ExpiresInMinutes:   int(invitationLifetime / time.Minute),
+	})
+	if deliveryErr == nil {
+		deliveryErr = m.Email.Send(ctx, &email.SendEmailInput{
+			To: user.Email, Subject: "Your Ara Cooperative membership invitation",
+			Body: message.HTML, Text: message.Text,
+		})
+	}
+	if deliveryErr != nil {
 		// The committed invitation can be retried by the admin without duplicating membership.
 		result.Delivery = "failed"
-		m.Logger.Sugar.Errorw("member invitation delivery failed", "error", err, "member_id", member.ID.String())
+		m.Logger.Sugar.Errorw("member invitation delivery failed", "error", deliveryErr, "member_id", member.ID.String())
 	}
 	return result, nil
 }

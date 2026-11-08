@@ -1,0 +1,16 @@
+{{define "title"}}Your Ara Cooperative invitation{{end}}
+
+{{define "preheader"}}{{if .NeedsPasswordSetup}}Set your password to start your membership.{{else}}Sign in to continue your membership setup.{{end}}{{end}}
+
+{{define "content"}}
+<p style="margin:0 0 16px 0;">Hello {{.FirstName}},</p>
+<p style="margin:0 0 24px 0;">You've been invited to become a member of Ara Cooperative. {{if .NeedsPasswordSetup}}Set your password to get started.{{else}}Sign in with your existing password to continue.{{end}}</p>
+<p style="margin:0 0 24px 0;">
+  <a href="{{.ActionURL}}" target="_blank" style="display:inline-block;padding:12px 22px;background:#7a4a2a;color:#ffffff;text-decoration:none;font-weight:600;border-radius:8px;">{{if .NeedsPasswordSetup}}Set your password{{else}}Sign in{{end}}</a>
+</p>
+{{if .NeedsPasswordSetup}}<p style="margin:0 0 16px 0;font-size:14px;color:#6b5d53;">The link works once and expires in {{.ExpiresInMinutes}} minutes. If it expires, ask an administrator to send a new invitation.</p>{{end}}
+<p style="margin:0 0 24px 0;">After signing in, complete your profile and pay the membership fee. Your membership becomes active once the payment is confirmed.</p>
+<p style="margin:0 0 24px 0;font-size:13px;color:#6b5d53;">Button not working? Copy this link:<br><a href="{{.ActionURL}}" target="_blank" style="color:#7a4a2a;word-break:break-all;">{{.ActionURL}}</a></p>
+{{end}}
+
+{{define "footer"}}You received this because an administrator invited this address. If you weren't expecting it, you can ignore this email.{{end}}

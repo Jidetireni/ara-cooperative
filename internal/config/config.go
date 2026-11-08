@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"net/mail"
 	"os"
 	"strconv"
 	"strings"
@@ -27,8 +28,18 @@ type AuthConfig struct {
 	JWTSecret string
 }
 
+// EmailConfig is the outgoing SMTP account. Defaults keep the original Gmail
+// setup; Resend uses SMTP_HOST=smtp.resend.com, SMTP_USERNAME=resend and an
+// API key as EMAIL_PASSWORD.
 type EmailConfig struct {
+	Host     string
+	Port     int
+	Username string
 	Password string
+	// FromAddress and FromName come from EMAIL_FROM, e.g.
+	// "Ara Cooperative <no-reply@mail.aracoop.xyz>".
+	FromAddress string
+	FromName    string
 }
 
 type SharesConfig struct {
@@ -67,6 +78,9 @@ type Config struct {
 
 const (
 	defaultPaystackBaseURL             = "https://api.paystack.co"
+	defaultSMTPHost                    = "smtp.gmail.com"
+	defaultSMTPPort                    = 587
+	defaultEmailFrom                   = "jtirenipraise@gmail.com"
 	defaultMaintenanceFeePercent       = 5
 	DefaultShareUnitPrice        int64 = 50_000
 )
@@ -95,6 +109,41 @@ func ParseMaintenanceFeePercent(value string) (int32, error) {
 		return 0, fmt.Errorf("MAINTENANCE_FEE_PERCENT must be a whole number from 0 to 100, got %q", value)
 	}
 	return int32(percent), nil
+}
+
+// ParseEmailConfig applies the SMTP defaults and validates the sender. The
+// username defaults to the sender address, as Gmail expects.
+func ParseEmailConfig(host, port, username, from, password string) (EmailConfig, error) {
+	cfg := EmailConfig{
+		Host:     strings.TrimSpace(host),
+		Port:     defaultSMTPPort,
+		Username: strings.TrimSpace(username),
+		Password: password,
+	}
+	if cfg.Host == "" {
+		cfg.Host = defaultSMTPHost
+	}
+	if value := strings.TrimSpace(port); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 65535 {
+			return EmailConfig{}, fmt.Errorf("SMTP_PORT must be a port number, got %q", value)
+		}
+		cfg.Port = parsed
+	}
+	from = strings.TrimSpace(from)
+	if from == "" {
+		from = defaultEmailFrom
+	}
+	address, err := mail.ParseAddress(from)
+	if err != nil {
+		return EmailConfig{}, fmt.Errorf("EMAIL_FROM must be an address like \"Ara Cooperative <no-reply@example.com>\": %w", err)
+	}
+	cfg.FromAddress = address.Address
+	cfg.FromName = address.Name
+	if cfg.Username == "" {
+		cfg.Username = cfg.FromAddress
+	}
+	return cfg, nil
 }
 
 func validateEnv() {
@@ -135,6 +184,13 @@ func New() *Config {
 	if err != nil {
 		log.Fatal(err)
 	}
+	emailConfig, err := ParseEmailConfig(
+		os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"), os.Getenv("SMTP_USERNAME"),
+		os.Getenv("EMAIL_FROM"), os.Getenv("EMAIL_PASSWORD"),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
 	paystackBaseURL := strings.TrimRight(os.Getenv("PAYSTACK_BASE_URL"), "/")
 	if paystackBaseURL == "" {
 		paystackBaseURL = defaultPaystackBaseURL
@@ -159,9 +215,7 @@ func New() *Config {
 		Auth: AuthConfig{
 			JWTSecret: os.Getenv("JWT_SECRET"),
 		},
-		Email: EmailConfig{
-			Password: os.Getenv("EMAIL_PASSWORD"),
-		},
+		Email: emailConfig,
 		Shares: SharesConfig{
 			UnitPrice: sharePrice,
 		},
