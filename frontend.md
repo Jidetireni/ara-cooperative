@@ -216,9 +216,9 @@ Owner creation and transfer are not public HTTP operations. Ordinary admin permi
 
 ### Email delivery setup
 
-No sending domain is available yet, and Resend is not integrated. Development currently prints email contents and invitation links to the backend terminal instead of delivering them. This supports local development, not real-member email delivery. Owner bootstrap does not require a sending domain.
+Outside `ENV=development`, the API sends email over SMTP. Configure it with `SMTP_HOST`, `SMTP_PORT` (587 STARTTLS or 465 TLS), `SMTP_USERNAME`, `EMAIL_FROM`, and `EMAIL_PASSWORD`; defaults keep the original Gmail account. Staging uses Resend with the verified sending domain `mail.aracoop.xyz`: `SMTP_HOST=smtp.resend.com`, `SMTP_USERNAME=resend`, a sending-access API key as `EMAIL_PASSWORD`, and `EMAIL_FROM=Ara Cooperative <no-reply@mail.aracoop.xyz>`. Keep the key in the host's secret settings, never in the repository. Development still prints emails and links to the backend terminal.
 
-Resend remains a proposed provider. Production delivery to members requires a verified domain controlled by the cooperative/platform. Its `resend.dev` sender is restricted to testing; see [Resend's testing restriction](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain).
+Emails are rendered from templates compiled into the binary (`pkg/email/templates`): a plain shared layout plus an HTML and plain-text version of each message. The member invitation is the only email today; its button is the first link and carries the set-password link (token in the URL fragment) or the login page. A matching "Member invitation" template (alias `member-invitation`) is published in Resend for dashboard use; the API renders its own copy, so edits in Resend don't change API emails. No API contract changed.
 
 ## Step 3: Member Invitations
 

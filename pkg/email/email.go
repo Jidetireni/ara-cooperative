@@ -11,19 +11,10 @@ import (
 
 type Email struct {
 	config *config.Config
-	cache  *EmailTemplateCache
 }
 
 func New(cfg *config.Config) (*Email, error) {
-	cache, err := NewEmailTemplateCache(EmailDirectory, 10)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Email{
-		config: cfg,
-		cache:  cache,
-	}, nil
+	return &Email{config: cfg}, nil
 }
 
 func (e *Email) Send(ctx context.Context, input *SendEmailInput) error {
@@ -32,19 +23,30 @@ func (e *Email) Send(ctx context.Context, input *SendEmailInput) error {
 		fmt.Printf("--- Email to be sent to %s ---\n", input.To)
 		fmt.Printf("Subject: %s\n", input.Subject)
 		fmt.Println("Body:")
-		fmt.Println(input.Body)
+		if input.Text != "" {
+			fmt.Println(input.Text)
+		} else {
+			fmt.Println(input.Body)
+		}
 		fmt.Println("---------------------------------")
 		return nil
 	}
 
+	smtp := e.config.Email
 	m := gomail.NewMessage()
-	m.SetHeader("From", ARAFromEmail)
+	m.SetAddressHeader("From", smtp.FromAddress, smtp.FromName)
 	m.SetHeader("To", input.To)
 	m.SetHeader("Subject", input.Subject)
-	m.SetBody("text/html", input.Body)
+	if input.Text != "" {
+		m.SetBody("text/plain", input.Text)
+		m.AddAlternative("text/html", input.Body)
+	} else {
+		m.SetBody("text/html", input.Body)
+	}
 
-	d := gomail.NewDialer(SMTPHost, SMTPPort, ARAFromEmail, e.config.Email.Password)
-	d.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, ServerName: SMTPHost}
+	// Port 465 uses implicit TLS; other ports upgrade with STARTTLS.
+	d := gomail.NewDialer(smtp.Host, smtp.Port, smtp.Username, smtp.Password)
+	d.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, ServerName: smtp.Host}
 
 	if err := d.DialAndSend(m); err != nil {
 		return fmt.Errorf("failed to send email: %w", err)
