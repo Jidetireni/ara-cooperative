@@ -28,10 +28,15 @@ type AuthConfig struct {
 	JWTSecret string
 }
 
-// EmailConfig is the outgoing SMTP account. Defaults keep the original Gmail
-// setup; Resend uses SMTP_HOST=smtp.resend.com, SMTP_USERNAME=resend and an
-// API key as EMAIL_PASSWORD.
+// EmailConfig is the outgoing mail account. With RESEND_API_KEY set, mail goes
+// through Resend's HTTPS API and the SMTP fields are unused. Otherwise SMTP is
+// used; defaults keep the original Gmail setup.
 type EmailConfig struct {
+	// ResendAPIKey selects the Resend HTTPS API. Use it where outbound SMTP is
+	// blocked (Railway's Free, Trial and Hobby plans).
+	ResendAPIKey  string
+	ResendBaseURL string
+
 	Host     string
 	Port     int
 	Username string
@@ -80,6 +85,7 @@ const (
 	defaultPaystackBaseURL             = "https://api.paystack.co"
 	defaultSMTPHost                    = "smtp.gmail.com"
 	defaultSMTPPort                    = 587
+	defaultResendBaseURL               = "https://api.resend.com"
 	defaultEmailFrom                   = "jtirenipraise@gmail.com"
 	defaultMaintenanceFeePercent       = 5
 	DefaultShareUnitPrice        int64 = 50_000
@@ -112,13 +118,20 @@ func ParseMaintenanceFeePercent(value string) (int32, error) {
 }
 
 // ParseEmailConfig applies the SMTP defaults and validates the sender. The
-// username defaults to the sender address, as Gmail expects.
-func ParseEmailConfig(host, port, username, from, password string) (EmailConfig, error) {
+// username defaults to the sender address, as Gmail expects. A Resend API key
+// requires an explicit EMAIL_FROM on a domain verified in Resend.
+func ParseEmailConfig(host, port, username, from, password, resendAPIKey string) (EmailConfig, error) {
+	resendAPIKey = strings.TrimSpace(resendAPIKey)
+	if resendAPIKey != "" && strings.TrimSpace(from) == "" {
+		return EmailConfig{}, fmt.Errorf("EMAIL_FROM is required with RESEND_API_KEY, e.g. \"Ara Cooperative <no-reply@mail.aracoop.xyz>\"")
+	}
 	cfg := EmailConfig{
-		Host:     strings.TrimSpace(host),
-		Port:     defaultSMTPPort,
-		Username: strings.TrimSpace(username),
-		Password: password,
+		ResendAPIKey:  resendAPIKey,
+		ResendBaseURL: defaultResendBaseURL,
+		Host:          strings.TrimSpace(host),
+		Port:          defaultSMTPPort,
+		Username:      strings.TrimSpace(username),
+		Password:      password,
 	}
 	if cfg.Host == "" {
 		cfg.Host = defaultSMTPHost
@@ -158,7 +171,7 @@ func validateEnv() {
 		// auth
 		"JWT_SECRET",
 	}
-	if os.Getenv("ENV") != "development" {
+	if os.Getenv("ENV") != "development" && os.Getenv("RESEND_API_KEY") == "" {
 		environmentVariables = append(environmentVariables, "EMAIL_PASSWORD")
 	}
 	for _, env := range environmentVariables {
@@ -186,7 +199,7 @@ func New() *Config {
 	}
 	emailConfig, err := ParseEmailConfig(
 		os.Getenv("SMTP_HOST"), os.Getenv("SMTP_PORT"), os.Getenv("SMTP_USERNAME"),
-		os.Getenv("EMAIL_FROM"), os.Getenv("EMAIL_PASSWORD"),
+		os.Getenv("EMAIL_FROM"), os.Getenv("EMAIL_PASSWORD"), os.Getenv("RESEND_API_KEY"),
 	)
 	if err != nil {
 		log.Fatal(err)

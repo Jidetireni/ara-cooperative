@@ -9,7 +9,7 @@ This file tracks the frontend contract as backend work lands. Use `/api/v1` as t
 | 1. Account/session context | Implemented and verified | Login, refresh, and current-user lookup expose roles and optional membership. |
 | 2. Owner bootstrap and admin permissions | Implemented and verified | Stored owner role, owner-only admin grants/revocations, and live authorization checks. |
 | 3. Invitation and profile onboarding | Invitations and profile completion implemented | Name/email-only invitations, password setup, admin retries, pending-member access checks, member profile read/update (`GET`/`PUT /members/me`), and the admin member list (`GET /members`) are ready. Self-service invitation resend and password reset remain planned. |
-| 4. Paystack checkout and split settlement | Implemented and tested | Quote, checkout (`POST /payments` returns `authorization_url`), status reads, signed webhook verification, and flat split to the owner subaccount. Amounts are kobo. |
+| 4. Paystack checkout and split settlement | Implemented and tested | Quote, checkout (`POST /payments` returns `authorization_url`), status reads, signed webhook verification, and owner subaccount settlement (`subaccount` + `transaction_charge`). Amounts are kobo. |
 | 5. Campaigns | Implemented | Creation/editing, dates, participation and amount rules, Paystack contributions, totals/history, closing/cancellation, resolution notes, and a manual refunded flag. |
 | 6. Loans | Implemented | Applications, admin history/review, configurable advisory thresholds, approval/rejection, and recording external disbursements. Repayments remain deferred. |
 
@@ -216,7 +216,7 @@ Owner creation and transfer are not public HTTP operations. Ordinary admin permi
 
 ### Email delivery setup
 
-Outside `ENV=development`, the API sends email over SMTP. Configure it with `SMTP_HOST`, `SMTP_PORT` (587 STARTTLS or 465 TLS), `SMTP_USERNAME`, `EMAIL_FROM`, and `EMAIL_PASSWORD`; defaults keep the original Gmail account. Staging uses Resend with the verified sending domain `mail.aracoop.xyz`: `SMTP_HOST=smtp.resend.com`, `SMTP_USERNAME=resend`, a sending-access API key as `EMAIL_PASSWORD`, and `EMAIL_FROM=Ara Cooperative <no-reply@mail.aracoop.xyz>`. Keep the key in the host's secret settings, never in the repository. Development still prints emails and links to the backend terminal.
+Outside `ENV=development`, the API sends email through Resend's HTTPS API when `RESEND_API_KEY` is set, and over SMTP otherwise. Railway's Free, Trial and Hobby plans block outbound SMTP, so staging must use the API: set `RESEND_API_KEY` (a sending-access key) and `EMAIL_FROM=Ara Cooperative <no-reply@mail.aracoop.xyz>` (required with the key, because the sender must be on the verified domain `mail.aracoop.xyz`). `EMAIL_PASSWORD` and the `SMTP_*` settings are then unused. The SMTP path remains for hosts that allow it: `SMTP_HOST`, `SMTP_PORT` (587 STARTTLS or 465 TLS), `SMTP_USERNAME`, `EMAIL_FROM`, and `EMAIL_PASSWORD`; defaults keep the original Gmail account. Keep keys in the host's secret settings, never in the repository. A failed send is logged as `member invitation delivery failed` with Resend's error message, and the invitation response returns `"delivery": "failed"`. Development still prints emails and links to the backend terminal.
 
 Emails are rendered from templates compiled into the binary (`pkg/email/templates`): a plain shared layout plus an HTML and plain-text version of each message. The member invitation is the only email today; its button is the first link and carries the set-password link (token in the URL fragment) or the login page. A matching "Member invitation" template (alias `member-invitation`) is published in Resend for dashboard use; the API renders its own copy, so edits in Resend don't change API emails. No API contract changed.
 
@@ -457,7 +457,7 @@ curl -s -X POST 'http://localhost:5001/api/v1/payments/ara_sav_4f9c0a1b2c3d4e5f6
 
 ### Metadata and split
 
-Checkout sends metadata `payment_id`, `member_id`, `member_number`, `purpose`, `amount`, `maintenance_fee`, `processing_charge`, `fine_id` (fines only), `campaign_id` (campaign contributions only), and `cancel_action`. The server trusts its own stored payment, not the returned metadata. The cooperative owns the main Paystack business and its payout account. Set `PAYSTACK_OWNER_SUBACCOUNT` to the platform owner's `ACCT_...` code. Checkout sends a flat split: the owner subaccount receives `maintenance_fee + processing_charge`, with `bearer_type: "subaccount"` and `bearer_subaccount` set to that same code. Paystack deducts its fee from this share, leaving the maintenance fee for the owner. The cooperative's main account retains the full underlying `amount`. New checkouts require a non-empty `PAYSTACK_OWNER_SUBACCOUNT`, including when maintenance is 0%. Missing configuration returns 503 before creating a payment or contacting Paystack. Quotes remain available, and existing checkouts can still be verified and credited using their stored allocation. `PAYSTACK_OWNER_SUBACCOUNT` replaces the old cooperative-subaccount setting; the backend does not reuse the old code.
+Checkout sends metadata `payment_id`, `member_id`, `member_number`, `purpose`, `amount`, `maintenance_fee`, `processing_charge`, `fine_id` (fines only), `campaign_id` (campaign contributions only), and `cancel_action`. The server trusts its own stored payment, not the returned metadata. The cooperative owns the main Paystack business and its payout account. Set `PAYSTACK_OWNER_SUBACCOUNT` to the platform owner's `ACCT_...` code. Checkout sends `subaccount` set to that code, `transaction_charge` set to the underlying `amount`, and `bearer: "subaccount"`. The main account receives `transaction_charge`, so the cooperative retains the full `amount`. The owner subaccount receives the rest, `maintenance_fee + processing_charge`, and Paystack deducts its fee from that share. A dynamic flat `split` is not used because Paystack rejects subaccount shares under NGN 100 ("the total must be equal to or greater than 100"), which small payments produce. New checkouts require a non-empty `PAYSTACK_OWNER_SUBACCOUNT`, including when maintenance is 0%. Missing configuration returns 503 before creating a payment or contacting Paystack. Quotes remain available, and existing checkouts can still be verified and credited using their stored allocation. `PAYSTACK_OWNER_SUBACCOUNT` replaces the old cooperative-subaccount setting; the backend does not reuse the old code.
 
 ### Local Paystack Webhook
 
@@ -500,13 +500,13 @@ Recreate the API container after changing its environment:
 docker compose up -d --no-build --force-recreate api
 ```
 
-Paystack supports charging the fee to the specified subaccount through [dynamic splits](https://paystack.com/docs/payments/multi-split-payments/).
+Paystack supports this through [split payments with a subaccount](https://paystack.com/docs/payments/split-payments/): `transaction_charge` overrides the subaccount's default percentage, and `bearer: "subaccount"` charges the fee to the subaccount.
 
 #### Main account and dashboard labels
 
 The main account is the Paystack business selected in the dashboard. The backend's `PAYSTACK_SECRET_KEY` must belong to that cooperative business. Configure the cooperative's payout bank under **Settings → Accounts** in Paystack. `OWNER_EMAIL` controls application access; it does not select the payout bank.
 
-The Subaccounts form configures the owner's payout bank. On that form, **Your share of payment (%)** means the cooperative main account's default share. **Subaccount gets (%)** means the owner's default share. A displayed 5/95 allocation means 5% cooperative and 95% owner for that default. Our checkout supplies a dynamic flat split instead, calculating the owner's maintenance fee plus processing charge for each payment.
+The Subaccounts form configures the owner's payout bank. On that form, **Your share of payment (%)** means the cooperative main account's default share. **Subaccount gets (%)** means the owner's default share. A displayed 5/95 allocation means 5% cooperative and 95% owner for that default. Our checkout overrides that default with a per-payment `transaction_charge`, so the owner receives the maintenance fee plus processing charge for each payment.
 
 The supplied owner code `ACCT_ebz1hbad8r4zq2u` was accessible with the configured Paystack test secret on 8 November 2026. Test-mode configuration does not confirm live settlement to a bank.
 

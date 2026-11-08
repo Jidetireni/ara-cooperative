@@ -11,10 +11,16 @@ import (
 
 type Email struct {
 	config *config.Config
+	// resend is set when RESEND_API_KEY is configured; SMTP is used otherwise.
+	resend *resendSender
 }
 
 func New(cfg *config.Config) (*Email, error) {
-	return &Email{config: cfg}, nil
+	e := &Email{config: cfg}
+	if key := cfg.Email.ResendAPIKey; key != "" {
+		e.resend = newResendSender(key, cfg.Email.ResendBaseURL, cfg.Email.FromAddress, cfg.Email.FromName)
+	}
+	return e, nil
 }
 
 func (e *Email) Send(ctx context.Context, input *SendEmailInput) error {
@@ -30,6 +36,10 @@ func (e *Email) Send(ctx context.Context, input *SendEmailInput) error {
 		}
 		fmt.Println("---------------------------------")
 		return nil
+	}
+
+	if e.resend != nil {
+		return e.resend.send(ctx, input)
 	}
 
 	smtp := e.config.Email

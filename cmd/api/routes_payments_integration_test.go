@@ -199,17 +199,16 @@ func TestPaystackRegistrationFeeActivatesMember(t *testing.T) {
 		checkout.Metadata.Amount != amount || checkout.Metadata.MaintenanceFee != fee || checkout.Metadata.MemberNumber != "ara000001" {
 		t.Fatalf("metadata missing payment details: %+v", checkout.Metadata)
 	}
-	split := checkout.Split
-	if split == nil || split.Type != paystack.SplitTypeFlat || split.BearerType != paystack.BearerTypeSubaccount ||
-		split.BearerSubaccount != testOwnerAccount || len(split.Subaccounts) != 1 {
-		t.Fatalf("owner split must name the owner subaccount as fee bearer: %+v", split)
+	if checkout.Subaccount != testOwnerAccount || checkout.Bearer != paystack.BearerSubaccount {
+		t.Fatalf("checkout must route the owner share to the owner subaccount as fee bearer: %+v", checkout)
 	}
-	ownerShare := split.Subaccounts[0]
-	if ownerShare.Subaccount != testOwnerAccount || ownerShare.Share != q.MaintenanceFee+q.ProcessingCharge {
-		t.Fatalf("owner split must receive maintenance plus processing and bear Paystack fees: %+v", split)
-	}
-	if checkout.Amount-ownerShare.Share != amount {
+	// transaction_charge goes to the cooperative's main account.
+	if checkout.TransactionCharge != amount {
 		t.Fatal("cooperative main account does not retain the full principal")
+	}
+	ownerShare := checkout.Amount - checkout.TransactionCharge
+	if ownerShare != q.MaintenanceFee+q.ProcessingCharge {
+		t.Fatalf("owner subaccount must receive maintenance plus processing: %d", ownerShare)
 	}
 	var snapshot struct {
 		Account string `json:"settlement_subaccount"`
@@ -219,7 +218,7 @@ func TestPaystackRegistrationFeeActivatesMember(t *testing.T) {
 		payment.Reference); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Account != testOwnerAccount || snapshot.Share != ownerShare.Share {
+	if snapshot.Account != testOwnerAccount || snapshot.Share != ownerShare {
 		t.Fatal("saved split does not match the owner allocation sent to Paystack")
 	}
 
@@ -697,15 +696,13 @@ func TestPaystackOwnerSplitWithZeroMaintenance(t *testing.T) {
 	completePaymentProfile(t, router, access)
 	payment := startPayment(t, router, access, dto.CreatePaymentInput{Purpose: "REGISTRATION_FEE"})
 	checkout := fake.lastCheckout(t)
-	if payment.MaintenanceFee != 0 || payment.ProcessingCharge <= 0 || checkout.Split == nil {
+	if payment.MaintenanceFee != 0 || payment.ProcessingCharge <= 0 || checkout.Subaccount != testOwnerAccount {
 		t.Fatal("zero-maintenance payment must still cover Paystack processing")
 	}
-	split := checkout.Split
-	if split.BearerType != paystack.BearerTypeSubaccount || split.BearerSubaccount != testOwnerAccount ||
-		len(split.Subaccounts) != 1 || split.Subaccounts[0].Share != payment.ProcessingCharge {
-		t.Fatalf("owner allocation must cover processing only: %+v", split)
+	if checkout.Bearer != paystack.BearerSubaccount || checkout.Amount-checkout.TransactionCharge != payment.ProcessingCharge {
+		t.Fatalf("owner allocation must cover processing only: %+v", checkout)
 	}
-	if checkout.Amount-split.Subaccounts[0].Share != payment.Amount {
+	if checkout.TransactionCharge != payment.Amount {
 		t.Fatal("processing fee reduced the cooperative's principal")
 	}
 }

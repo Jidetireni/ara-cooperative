@@ -213,15 +213,11 @@ func (p *Payment) Create(ctx context.Context, input dto.CreatePaymentInput) (*dt
 		return nil, err
 	}
 
-	// The main cooperative account keeps the principal. The owner's subaccount
-	// receives the maintenance fee plus processing charge and bears Paystack's fee.
+	// The main cooperative account keeps the principal (transaction_charge).
+	// The owner's subaccount receives the rest, the maintenance fee plus
+	// processing charge, and bears Paystack's fee. A dynamic flat split would
+	// reject owner shares under NGN 100.
 	ownerShare := plan.quote.MaintenanceFee + plan.quote.ProcessingCharge
-	split := &paystack.Split{
-		Type:             paystack.SplitTypeFlat,
-		BearerType:       paystack.BearerTypeSubaccount,
-		BearerSubaccount: ownerSubaccount,
-		Subaccounts:      []paystack.SplitSubaccount{{Subaccount: ownerSubaccount, Share: ownerShare}},
-	}
 
 	payment, err := p.PaymentRepo.Create(ctx, &repository.Payment{
 		MemberID:              plan.member.ID,
@@ -274,7 +270,11 @@ func (p *Payment) Create(ctx context.Context, input dto.CreatePaymentInput) (*dt
 		Reference:   reference,
 		CallbackURL: p.callbackURL(reference, false),
 		Metadata:    metadata,
-		Split:       split,
+		// Persisted payments keep Total = Amount + ownerShare, so the
+		// subaccount receives exactly the stored settlement share.
+		Subaccount:        ownerSubaccount,
+		TransactionCharge: payment.Amount,
+		Bearer:            paystack.BearerSubaccount,
 	})
 	if err != nil {
 		p.Logger.Sugar.Errorw("paystack checkout failed", "error", err, "reference", reference)
