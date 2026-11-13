@@ -4,6 +4,7 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/config"
 	"github.com/Jidetireni/ara-cooperative/internal/middleware"
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
+	"github.com/Jidetireni/ara-cooperative/internal/services/banks"
 	"github.com/Jidetireni/ara-cooperative/internal/services/campaigns"
 	"github.com/Jidetireni/ara-cooperative/internal/services/loans"
 	"github.com/Jidetireni/ara-cooperative/internal/services/members"
@@ -11,6 +12,7 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/services/transactions"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
 
+	"github.com/Jidetireni/ara-cooperative/pkg/cloudinary"
 	"github.com/Jidetireni/ara-cooperative/pkg/database"
 	emailpkg "github.com/Jidetireni/ara-cooperative/pkg/email"
 	"github.com/Jidetireni/ara-cooperative/pkg/logger"
@@ -40,6 +42,7 @@ type Services struct {
 	Payments     *payments.Payment
 	Campaigns    *campaigns.Campaign
 	Loans        *loans.Loan
+	Banks        *banks.Banks
 }
 
 type Packages struct {
@@ -104,6 +107,7 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		permissionRepo,
 		tokenRepo,
 		email,
+		cloudinary.New(cfg.Cloudinary.CloudName, cfg.Cloudinary.APIKey, cfg.Cloudinary.APISecret),
 		logger,
 	)
 
@@ -143,6 +147,8 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 		logger,
 	)
 
+	banksService := banks.New(paystackClient, logger)
+
 	middleware := middleware.New(jwtToken, logger, usersService)
 
 	return &Factory{
@@ -160,7 +166,8 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 				Transactions: transactionService,
 				Payments:     paymentsService,
 				Campaigns:    campaigns.New(db.DB, campaignRepo, memberRepo, paymentRepo),
-				Loans:        loans.New(db.DB, loanRepo, memberRepo, transactionRepo, shareRepo),
+				Loans:        loans.New(db.DB, loanRepo, memberRepo, transactionRepo, shareRepo, fineRepo, banksService),
+				Banks:        banksService,
 			},
 			Repositories: &Repositories{
 				Member:      memberRepo,

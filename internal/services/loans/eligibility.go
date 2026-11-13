@@ -153,5 +153,109 @@ func (l *Loan) eligibility(ctx context.Context, loan *repository.Loan, tx *sqlx.
 	if result.ActiveLoans > 0 {
 		flag("ACTIVE_LOANS", "Member has active loans; repayment status is not tracked in this version")
 	}
+	if err := l.byelawChecks(ctx, loan, result, actual, flag, tx); err != nil {
+		return nil, err
+	}
 	return result, nil
+}
+
+// Bye-law limits. They raise advisory flags; an admin may still approve by
+// recording an override reason. The interest cap is enforced on approval.
+const (
+	byelawMinimumShareUnits    = 50 // bye-law 46: every member holds at least 50 shares
+	byelawMembershipMonths     = 6  // bye-law 65: no loan within 6 months of admission
+	byelawMaxRepaymentMonths   = 12 // bye-law 71: repay within twelve months
+	byelawMaxAnnualInterestPct = 15 // bye-law 67: at most 15 percent per annum
+	byelawGuarantorsRequired   = 2  // bye-law 68: two sureties who are members
+)
+
+func (l *Loan) byelawChecks(
+	ctx context.Context, loan *repository.Loan, result *dto.LoanEligibility, shareUnits *big.Rat,
+	flag func(code, message string), tx *sqlx.Tx,
+) error {
+	member, err := l.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{ID: &loan.MemberID}, tx)
+	if err != nil {
+		return err
+	}
+	if member.ActivatedAt.Valid {
+		result.MembershipActivatedAt = &member.ActivatedAt.Time
+		if loan.CreatedAt.Before(member.ActivatedAt.Time.AddDate(0, byelawMembershipMonths, 0)) {
+			flag("MEMBERSHIP_UNDER_SIX_MONTHS", "Applied within 6 months of membership activation (bye-law 65)")
+		}
+	}
+	if shareUnits.Cmp(big.NewRat(byelawMinimumShareUnits, 1)) < 0 {
+		flag("BELOW_BYELAW_SHARE_MINIMUM", "Holds fewer than the 50 shares every member must hold (bye-law 46)")
+	}
+	if loan.RequestedDurationMonths > byelawMaxRepaymentMonths ||
+		(loan.RepaymentDurationMonths.Valid && loan.RepaymentDurationMonths.Int32 > byelawMaxRepaymentMonths) {
+		flag("REPAYMENT_OVER_TWELVE_MONTHS", "Requested repayment runs past 12 months (bye-law 71)")
+	}
+	guarantors, err := l.LoanRepo.ListGuarantors(ctx, repository.LoanGuarantorRepositoryFilter{LoanID: &loan.ID}, tx)
+	if err != nil {
+		return err
+	}
+	result.Guarantors = []dto.LoanGuarantorCheck{}
+	if len(guarantors) < byelawGuarantorsRequired {
+		flag("GUARANTORS_MISSING", "Fewer than two guarantors are named (bye-law 68)")
+	}
+	var notAccepted, inactive, onLoan, indebted bool
+	for _, g := range guarantors {
+		check, err := l.guarantorCheck(ctx, g, tx)
+		if err != nil {
+			return err
+		}
+		result.Guarantors = append(result.Guarantors, *check)
+		notAccepted = notAccepted || check.Status != "ACCEPTED"
+		inactive = inactive || !check.IsActive
+		onLoan = onLoan || check.OpenLoans > 0
+		indebted = indebted || check.UnpaidFines > 0
+	}
+	if notAccepted {
+		flag("GUARANTOR_NOT_ACCEPTED", "A guarantor has not accepted the guarantee")
+	}
+	if inactive {
+		flag("GUARANTOR_NOT_ACTIVE", "A guarantor is not an active member (bye-law 68)")
+	}
+	if onLoan {
+		flag("GUARANTOR_ON_LOAN", "A guarantor has an approved or active loan; guarantors must not be on loan")
+	}
+	if indebted {
+		flag("GUARANTOR_INDEBTED", "A guarantor has unpaid fines; guarantors must not be indebted to the cooperative")
+	}
+	return nil
+}
+
+// guarantorCheck reports a guarantor's savings, shares and obligations, as the
+// form's "Total Shares and Savings in ARA Cooperative" line.
+func (l *Loan) guarantorCheck(ctx context.Context, g *repository.PopulatedLoanGuarantor, tx *sqlx.Tx) (*dto.LoanGuarantorCheck, error) {
+	savings, err := l.TransactionRepo.GetBalance(ctx, repository.TransactionRepositoryFilter{
+		MemberID: &g.MemberID, LedgerType: lo.ToPtr(repository.LedgerTypeSAVINGS),
+		Type: lo.ToPtr(repository.TransactionTypeDEPOSIT), Confirmed: lo.ToPtr(true), Rejected: lo.ToPtr(false),
+	})
+	if err != nil {
+		return nil, err
+	}
+	shares, err := l.ShareRepo.CountTotalSharesPurchased(ctx, repository.ShareRepositoryFilter{
+		MemberID: &g.MemberID, LedgerType: lo.ToPtr(repository.LedgerTypeSHARES), Confirmed: lo.ToPtr(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+	var openLoans int64
+	for _, status := range []string{"APPROVED", "ACTIVE"} {
+		count, err := l.LoanRepo.Count(ctx, repository.LoanRepositoryFilter{MemberID: &g.MemberID, Status: lo.ToPtr(status)}, tx)
+		if err != nil {
+			return nil, err
+		}
+		openLoans += count
+	}
+	unpaidFines, err := l.FineRepo.Count(ctx, repository.FineRepositoryFilter{MemberID: &g.MemberID, Paid: lo.ToPtr(false)}, tx)
+	if err != nil {
+		return nil, err
+	}
+	name := strings.Join(lo.Compact([]string{g.Member.FirstName, g.Member.MiddleName.String, g.Member.LastName}), " ")
+	return &dto.LoanGuarantorCheck{
+		MemberID: g.MemberID, Slug: g.Member.Slug, Name: name, Status: g.Status, IsActive: g.Member.ActivatedAt.Valid,
+		Savings: savings, ShareUnits: shares.Units, OpenLoans: openLoans, UnpaidFines: unpaidFines,
+	}, nil
 }

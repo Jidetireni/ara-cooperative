@@ -24,7 +24,9 @@ func New(cfg *config.Config) (*Email, error) {
 }
 
 func (e *Email) Send(ctx context.Context, input *SendEmailInput) error {
-	// In dev mode
+	// In development the message is always printed so links are easy to
+	// reach. It is also delivered when Resend is configured; without Resend,
+	// development never sends (it would otherwise hit the SMTP placeholder).
 	if e.config.IsDev {
 		fmt.Printf("--- Email to be sent to %s ---\n", input.To)
 		fmt.Printf("Subject: %s\n", input.Subject)
@@ -35,7 +37,9 @@ func (e *Email) Send(ctx context.Context, input *SendEmailInput) error {
 			fmt.Println(input.Body)
 		}
 		fmt.Println("---------------------------------")
-		return nil
+		if e.resend == nil {
+			return nil
+		}
 	}
 
 	if e.resend != nil {

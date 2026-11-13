@@ -203,3 +203,10 @@ func ToNullString(s *string) sql.NullString {
 
 	return sql.NullString{String: *s, Valid: true}
 }
+
+func ToNullInt64(n *int64) sql.NullInt64 {
+	if n == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: *n, Valid: true}
+}

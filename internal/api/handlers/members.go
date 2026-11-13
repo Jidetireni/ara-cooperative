@@ -59,6 +59,18 @@ func (h *Handlers) ListMembers(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// SearchMembers finds active members by name or membership number (?q=).
+func (h *Handlers) SearchMembers(w http.ResponseWriter, r *http.Request) {
+	cards, err := h.factory.Services.Member.Search(r.Context(), r.URL.Query().Get("q"))
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	if err := h.writeJSON(w, http.StatusOK, cards, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
 func (h *Handlers) MemberBySlug(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	member, err := h.factory.Services.Member.GetBySlug(r.Context(), slug)
@@ -87,6 +99,46 @@ func (h *Handlers) UpdateMemberProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	member, err := h.factory.Services.Member.UpdateProfile(r.Context(), input)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	if err := h.writeJSON(w, http.StatusOK, member, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
+// AdminMemberProfile returns a member's full membership application.
+func (h *Handlers) AdminMemberProfile(w http.ResponseWriter, r *http.Request) {
+	member, err := h.factory.Services.Member.AdminProfile(r.Context(), chi.URLParam(r, "slug"))
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	if err := h.writeJSON(w, http.StatusOK, member, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
+// PassportPhotoUpload signs a direct browser upload to Cloudinary.
+func (h *Handlers) PassportPhotoUpload(w http.ResponseWriter, r *http.Request) {
+	signature, err := h.factory.Services.Member.PassportPhotoUpload(r.Context())
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	if err := h.writeJSON(w, http.StatusOK, signature, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
+// SavePassportPhoto records the image after the browser uploads it.
+func (h *Handlers) SavePassportPhoto(w http.ResponseWriter, r *http.Request) {
+	var input dto.PassportPhotoInput
+	if !h.decodeAndValidate(w, r, &input) {
+		return
+	}
+	member, err := h.factory.Services.Member.SavePassportPhoto(r.Context(), input)
 	if err != nil {
 		h.errorResponse(w, r, err)
 		return

@@ -183,29 +183,47 @@ type Fine struct {
 }
 
 type Loan struct {
-	ID                      uuid.UUID      `json:"id"`
-	MemberID                uuid.UUID      `json:"member_id"`
-	RequestedAmount         int64          `json:"requested_amount"`
-	Purpose                 string         `json:"purpose"`
-	RequestedDurationMonths int32          `json:"requested_duration_months"`
-	Status                  string         `json:"status"`
-	ApprovedAmount          sql.NullInt64  `json:"approved_amount"`
-	ApprovedDurationMonths  sql.NullInt32  `json:"approved_duration_months"`
-	InterestMethod          sql.NullString `json:"interest_method"`
-	InterestRatePercent     sql.NullString `json:"interest_rate_percent"`
-	InterestPeriod          sql.NullString `json:"interest_period"`
-	ReviewReason            sql.NullString `json:"review_reason"`
-	OverrideReason          sql.NullString `json:"override_reason"`
-	EligibilitySnapshot     sql.NullString `json:"eligibility_snapshot"`
-	ReviewedBy              uuid.NullUUID  `json:"reviewed_by"`
-	ReviewedAt              sql.NullTime   `json:"reviewed_at"`
-	DisbursedAmount         sql.NullInt64  `json:"disbursed_amount"`
-	DisbursedAt             sql.NullTime   `json:"disbursed_at"`
-	DisbursementReference   sql.NullString `json:"disbursement_reference"`
-	DisbursedBy             uuid.NullUUID  `json:"disbursed_by"`
-	TransactionID           uuid.NullUUID  `json:"transaction_id"`
-	CreatedAt               time.Time      `json:"created_at"`
-	UpdatedAt               sql.NullTime   `json:"updated_at"`
+	ID                        uuid.UUID      `json:"id"`
+	MemberID                  uuid.UUID      `json:"member_id"`
+	RequestedAmount           int64          `json:"requested_amount"`
+	Purpose                   string         `json:"purpose"`
+	RequestedDurationMonths   int32          `json:"requested_duration_months"`
+	Status                    string         `json:"status"`
+	ApprovedAmount            sql.NullInt64  `json:"approved_amount"`
+	ApprovedDurationMonths    sql.NullInt32  `json:"approved_duration_months"`
+	InterestMethod            sql.NullString `json:"interest_method"`
+	InterestRatePercent       sql.NullString `json:"interest_rate_percent"`
+	InterestPeriod            sql.NullString `json:"interest_period"`
+	ReviewReason              sql.NullString `json:"review_reason"`
+	OverrideReason            sql.NullString `json:"override_reason"`
+	EligibilitySnapshot       sql.NullString `json:"eligibility_snapshot"`
+	ReviewedBy                uuid.NullUUID  `json:"reviewed_by"`
+	ReviewedAt                sql.NullTime   `json:"reviewed_at"`
+	DisbursedAmount           sql.NullInt64  `json:"disbursed_amount"`
+	DisbursedAt               sql.NullTime   `json:"disbursed_at"`
+	DisbursementReference     sql.NullString `json:"disbursement_reference"`
+	DisbursedBy               uuid.NullUUID  `json:"disbursed_by"`
+	TransactionID             uuid.NullUUID  `json:"transaction_id"`
+	CreatedAt                 time.Time      `json:"created_at"`
+	UpdatedAt                 sql.NullTime   `json:"updated_at"`
+	RepaymentStartDate        sql.NullTime   `json:"repayment_start_date"`
+	RepaymentDurationMonths   sql.NullInt32  `json:"repayment_duration_months"`
+	MonthlyRepaymentAmount    sql.NullInt64  `json:"monthly_repayment_amount"`
+	DisbursementBankName      sql.NullString `json:"disbursement_bank_name"`
+	DisbursementAccountName   sql.NullString `json:"disbursement_account_name"`
+	DisbursementAccountNumber sql.NullString `json:"disbursement_account_number"`
+	DeclarationAcceptedAt     sql.NullTime   `json:"declaration_accepted_at"`
+	DisbursementBankCode      sql.NullString `json:"disbursement_bank_code"`
+}
+
+type LoanGuarantor struct {
+	ID          uuid.UUID    `json:"id"`
+	LoanID      uuid.UUID    `json:"loan_id"`
+	MemberID    uuid.UUID    `json:"member_id"`
+	Position    int16        `json:"position"`
+	Status      string       `json:"status"`
+	RespondedAt sql.NullTime `json:"responded_at"`
+	CreatedAt   time.Time    `json:"created_at"`
 }
 
 type LoanSetting struct {
@@ -217,19 +235,50 @@ type LoanSetting struct {
 }
 
 type Member struct {
-	ID             uuid.UUID      `json:"id"`
-	UserID         uuid.UUID      `json:"user_id"`
-	Slug           string         `json:"slug"`
-	FirstName      string         `json:"first_name"`
-	LastName       string         `json:"last_name"`
-	Phone          sql.NullString `json:"phone"`
-	Address        sql.NullString `json:"address"`
-	NextOfKinName  sql.NullString `json:"next_of_kin_name"`
-	NextOfKinPhone sql.NullString `json:"next_of_kin_phone"`
-	ActivatedAt    sql.NullTime   `json:"activated_at"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      sql.NullTime   `json:"updated_at"`
-	DeletedAt      sql.NullTime   `json:"deleted_at"`
+	ID                        uuid.UUID      `json:"id"`
+	UserID                    uuid.UUID      `json:"user_id"`
+	Slug                      string         `json:"slug"`
+	FirstName                 string         `json:"first_name"`
+	LastName                  string         `json:"last_name"`
+	Phone                     sql.NullString `json:"phone"`
+	Address                   sql.NullString `json:"address"`
+	NextOfKinName             sql.NullString `json:"next_of_kin_name"`
+	NextOfKinPhone            sql.NullString `json:"next_of_kin_phone"`
+	ActivatedAt               sql.NullTime   `json:"activated_at"`
+	CreatedAt                 time.Time      `json:"created_at"`
+	UpdatedAt                 sql.NullTime   `json:"updated_at"`
+	DeletedAt                 sql.NullTime   `json:"deleted_at"`
+	Title                     sql.NullString `json:"title"`
+	MiddleName                sql.NullString `json:"middle_name"`
+	AlternatePhone            sql.NullString `json:"alternate_phone"`
+	PlaceOfBirth              sql.NullString `json:"place_of_birth"`
+	Nationality               sql.NullString `json:"nationality"`
+	StateOfOrigin             sql.NullString `json:"state_of_origin"`
+	HomeTown                  sql.NullString `json:"home_town"`
+	Lga                       sql.NullString `json:"lga"`
+	NextOfKinAddress          sql.NullString `json:"next_of_kin_address"`
+	WorkplaceCompany          sql.NullString `json:"workplace_company"`
+	WorkplaceAddress          sql.NullString `json:"workplace_address"`
+	WorkplaceSince            sql.NullTime   `json:"workplace_since"`
+	WorkplacePosition         sql.NullString `json:"workplace_position"`
+	WorkplaceResponsibilities sql.NullString `json:"workplace_responsibilities"`
+	MonthlyContributionPledge sql.NullInt64  `json:"monthly_contribution_pledge"`
+	IntroducedByName          sql.NullString `json:"introduced_by_name"`
+	IntroducedByNumber        sql.NullString `json:"introduced_by_number"`
+	DeclarationAcceptedAt     sql.NullTime   `json:"declaration_accepted_at"`
+	PassportPhotoPublicID     sql.NullString `json:"passport_photo_public_id"`
+	PassportPhotoVersion      sql.NullInt64  `json:"passport_photo_version"`
+}
+
+type MemberBeneficiary struct {
+	ID           uuid.UUID `json:"id"`
+	MemberID     uuid.UUID `json:"member_id"`
+	Position     int16     `json:"position"`
+	Name         string    `json:"name"`
+	Relationship string    `json:"relationship"`
+	Address      string    `json:"address"`
+	Phone        string    `json:"phone"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type Payment struct {

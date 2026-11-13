@@ -12,6 +12,7 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
+	"github.com/Jidetireni/ara-cooperative/pkg/cloudinary"
 	"github.com/Jidetireni/ara-cooperative/pkg/email"
 	"github.com/Jidetireni/ara-cooperative/pkg/logger"
 	"github.com/Jidetireni/ara-cooperative/pkg/token"
@@ -34,7 +35,8 @@ var (
 )
 
 var (
-	_ EmailPkg = (*email.Email)(nil)
+	_ EmailPkg      = (*email.Email)(nil)
+	_ ImageUploader = (*cloudinary.Client)(nil)
 )
 
 type MemberRepository interface {
@@ -45,6 +47,18 @@ type MemberRepository interface {
 	ListPopulated(ctx context.Context, filter repository.MemberRepositoryFilter, opts repository.QueryOptions) (*repository.ListResult[repository.PopulatedMember], error)
 	MapRepositoryToDTOModel(member *repository.Member) *dto.Member
 	MapPopulatedToDTOModel(populated *repository.PopulatedMember) *dto.MemberSummary
+	MapCardToDTOModel(member *repository.Member) *dto.MemberCard
+	ListBeneficiaries(ctx context.Context, memberID uuid.UUID, tx *sqlx.Tx) ([]repository.MemberBeneficiary, error)
+	ReplaceBeneficiaries(ctx context.Context, memberID uuid.UUID, beneficiaries []repository.MemberBeneficiary, tx *sqlx.Tx) ([]repository.MemberBeneficiary, error)
+	SetPassportPhoto(ctx context.Context, memberID uuid.UUID, publicID string, version int64) (*repository.Member, error)
+}
+
+// ImageUploader signs direct browser uploads to Cloudinary and verifies
+// Cloudinary's upload response.
+type ImageUploader interface {
+	Enabled() bool
+	SignUpload(publicID string) (*cloudinary.UploadSignature, error)
+	VerifyUpload(publicID string, version int64, signature string) error
 }
 
 type UserRepository interface {
@@ -80,6 +94,7 @@ type Member struct {
 	PermissionRepo   PermissionRepository
 	TokenRepo        TokenRepository
 	Email            EmailPkg
+	Images           ImageUploader
 	Logger           *logger.Logger
 }
 
@@ -92,6 +107,7 @@ func New(
 	permissionRepo PermissionRepository,
 	tokenRepo TokenRepository,
 	emailPkg EmailPkg,
+	images ImageUploader,
 	log *logger.Logger,
 ) *Member {
 	return &Member{
@@ -103,6 +119,7 @@ func New(
 		PermissionRepo:   permissionRepo,
 		TokenRepo:        tokenRepo,
 		Email:            emailPkg,
+		Images:           images,
 		Logger:           log,
 	}
 }
@@ -219,84 +236,6 @@ func (m *Member) Create(
 	return result, nil
 }
 
-func (m *Member) Current(ctx context.Context) (*dto.Member, error) {
-	actor, ok := users.FromContext(ctx)
-	if !ok || actor.ID == uuid.Nil {
-		return nil, svc.UnauthenticatedError()
-	}
-	if !actor.IsAuthenticatedAsMember {
-		return nil, &svc.APIError{Status: http.StatusForbidden, Message: "member access required"}
-	}
-	member, err := m.MemberRepository.Get(ctx, repository.MemberRepositoryFilter{UserID: &actor.ID}, nil)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, svc.ErrNotFound()
-	}
-	if err != nil {
-		return nil, fmt.Errorf("load current member: %w", err)
-	}
-	return m.MemberRepository.MapRepositoryToDTOModel(member), nil
-}
-
-func (m *Member) UpdateProfile(
-	ctx context.Context, input dto.UpdateMemberProfileInput,
-) (result *dto.Member, err error) {
-	actor, ok := users.FromContext(ctx)
-	if !ok || actor.ID == uuid.Nil {
-		return nil, svc.UnauthenticatedError()
-	}
-	if !actor.IsAuthenticatedAsMember {
-		return nil, &svc.APIError{Status: http.StatusForbidden, Message: "member access required"}
-	}
-	input.Phone = strings.TrimSpace(input.Phone)
-	input.Address = strings.TrimSpace(input.Address)
-	input.NextOfKinName = strings.TrimSpace(input.NextOfKinName)
-	input.NextOfKinPhone = strings.TrimSpace(input.NextOfKinPhone)
-	invalidPhone := !validProfilePhone(input.Phone) || !validProfilePhone(input.NextOfKinPhone)
-	missingDetails := input.Address == "" || input.NextOfKinName == ""
-	if invalidPhone || missingDetails {
-		return nil, &svc.APIError{Status: http.StatusBadRequest,
-			Message: "complete all profile fields; phone numbers need 7 to 15 digits with an optional leading +"}
-	}
-	tx, err := m.DB.BeginTxx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("begin member profile update: %w", err)
-	}
-	defer func() {
-		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			err = errors.Join(err, fmt.Errorf("rollback member profile update: %w", rollbackErr))
-		}
-	}()
-	// Lock the current row so saving the profile preserves the latest activation state.
-	member, err := m.MemberRepository.Get(ctx, repository.MemberRepositoryFilter{
-		UserID: &actor.ID, ForUpdate: true,
-	}, tx)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, svc.ErrNotFound()
-	}
-	if err != nil {
-		return nil, fmt.Errorf("load member profile for update: %w", err)
-	}
-	member.Phone = sql.NullString{String: input.Phone, Valid: true}
-	member.Address = sql.NullString{String: input.Address, Valid: true}
-	member.NextOfKinName = sql.NullString{String: input.NextOfKinName, Valid: true}
-	member.NextOfKinPhone = sql.NullString{String: input.NextOfKinPhone, Valid: true}
-	updated, err := m.MemberRepository.Update(ctx, member, tx)
-	var duplicate *pq.Error
-	if errors.As(err, &duplicate) && duplicate.Code == "23505" {
-		return nil, &svc.APIError{Status: http.StatusConflict, Message: "phone number is already used by another member"}
-	}
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, svc.ErrNotFound()
-	}
-	if err != nil {
-		return nil, fmt.Errorf("update member profile: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit member profile update: %w", err)
-	}
-	return m.MemberRepository.MapRepositoryToDTOModel(updated), nil
-}
-
 // maxMemberSearchLength bounds the admin search term before it reaches ILIKE.
 const maxMemberSearchLength = 100
 
@@ -353,23 +292,6 @@ func validProfilePhone(phone string) bool {
 		}
 	}
 	return true
-}
-
-func (m *Member) GetBySlug(ctx context.Context, slug string) (*dto.Member, error) {
-	member, err := m.MemberRepository.Get(ctx, repository.MemberRepositoryFilter{
-		Slug: &slug,
-	}, nil)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, &svc.APIError{
-				Status:  http.StatusNotFound,
-				Message: "Member not found",
-			}
-		}
-		return nil, err
-	}
-
-	return m.MemberRepository.MapRepositoryToDTOModel(member), nil
 }
 
 func (m *Member) IsMemberActive(ctx context.Context, memberID uuid.UUID) (bool, error) {

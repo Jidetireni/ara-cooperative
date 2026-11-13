@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/Jidetireni/ara-cooperative/pkg/paystack"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 )
 
 func loanResult(t *testing.T, w *httptest.ResponseRecorder, status int) dto.Loan {
@@ -27,10 +29,44 @@ func loanResult(t *testing.T, w *httptest.ResponseRecorder, status int) dto.Loan
 	return response.Data
 }
 
-func requestLoan(t *testing.T, router http.Handler, access string) dto.Loan {
+// loanGuarantors inserts two active members once per test database and
+// returns their membership numbers.
+func loanGuarantors(t *testing.T, db *sqlx.DB) []string {
+	t.Helper()
+	slugs := []string{"ara900001", "ara900002"}
+	for _, slug := range slugs {
+		if _, err := db.Exec(`WITH u AS (
+				INSERT INTO users (email, email_confirmed_at) VALUES ($1, NOW())
+				ON CONFLICT DO NOTHING RETURNING id)
+			INSERT INTO members (user_id, slug, first_name, last_name, address, activated_at)
+			SELECT id, $2, 'Guarantor', $2, '5 Surety Street, Ado Ekiti', NOW() FROM u`, slug+"@example.com", slug); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return slugs
+}
+
+func loanApplication(guarantors []string) dto.LoanInput {
+	return dto.LoanInput{
+		Amount: 1_000_000, Purpose: "  School fees  ", DurationMonths: 12,
+		RepaymentStartDate: time.Now().AddDate(0, 1, 0).Format(time.DateOnly), RepaymentDurationMonths: 10,
+		MonthlyRepaymentAmount: 100_000, DisbursementBankCode: "011",
+		DisbursementAccountNumber: "2043541845", GuarantorMemberNumbers: guarantors, DeclarationAccepted: true,
+	}
+}
+
+func requestLoan(t *testing.T, db *sqlx.DB, router http.Handler, access string) dto.Loan {
 	t.Helper()
 	return loanResult(t, sessionRequest(router, http.MethodPost, "/api/v1/loans",
-		`{"amount":1000000,"purpose":"  School fees  ","duration_months":12}`, access, nil), http.StatusCreated)
+		invitationBody(t, loanApplication(loanGuarantors(t, db))), access, nil), http.StatusCreated)
+}
+
+func flagCodes(flags []dto.LoanAdvisoryFlag) map[string]bool {
+	codes := map[string]bool{}
+	for _, flag := range flags {
+		codes[flag.Code] = true
+	}
+	return codes
 }
 
 func loanActor(t *testing.T, db *sqlx.DB, router http.Handler, roles []string, member bool) (uuid.UUID, string) {
@@ -62,8 +98,11 @@ func loanActor(t *testing.T, db *sqlx.DB, router http.Handler, roles []string, m
 }
 
 func loanTerms() dto.LoanApprovalInput {
+	// New test members trip the bye-law advisories (under six months, under 50
+	// shares, guarantors not yet accepted), so approvals record an override.
 	return dto.LoanApprovalInput{Amount: 900_000, DurationMonths: 6, InterestMethod: "FLAT",
-		InterestRatePercent: "5.25", InterestPeriod: "MONTHLY", Reason: "Approved final terms"}
+		InterestRatePercent: "1.25", InterestPeriod: "MONTHLY", Reason: "Approved final terms",
+		OverrideReason: "Committee reviewed the bye-law advisories"}
 }
 
 func TestLoanApplicationApprovalAndDisbursement(t *testing.T) {
@@ -78,9 +117,14 @@ func TestLoanApplicationApprovalAndDisbursement(t *testing.T) {
 			seedSessionUser(t, db, []string{"member"}, true, true)
 			member := invitationAdminToken(t, router)
 			adminID, admin := loanActor(t, db, router, []string{tt.role}, false)
-			loan := requestLoan(t, router, member)
+			loan := requestLoan(t, db, router, member)
 			if loan.Status != "PENDING" || loan.Purpose != "School fees" || loan.ApprovedAmount != nil || loan.DisbursedAt != nil {
 				t.Fatalf("unexpected application: %+v", loan)
+			}
+			if len(loan.Guarantors) != 2 || loan.Guarantors[0].Member.Slug != "ara900001" || loan.Guarantors[0].Status != "PENDING" ||
+				loan.DisbursementAccountNumber == nil || *loan.DisbursementAccountNumber != "2043541845" ||
+				loan.RepaymentDurationMonths == nil || *loan.RepaymentDurationMonths != 10 || loan.DeclarationAcceptedAt == nil {
+				t.Fatalf("loan form details missing: %+v", loan)
 			}
 			path := "/api/v1/loans/" + loan.ID.String()
 			terms := loanTerms()
@@ -88,8 +132,9 @@ func TestLoanApplicationApprovalAndDisbursement(t *testing.T) {
 			approved := loanResult(t, sessionRequest(router, http.MethodPost, path+"/approve", invitationBody(t, terms), admin, nil), http.StatusOK)
 			if approved.Status != "APPROVED" || approved.ApprovedAmount == nil || *approved.ApprovedAmount != terms.Amount ||
 				approved.RequestedAmount != loan.RequestedAmount || approved.ReviewedBy == nil || *approved.ReviewedBy != adminID ||
-				approved.InterestRatePercent == nil || *approved.InterestRatePercent != "5.2500" ||
-				approved.EligibilitySnapshot == nil || len(approved.EligibilitySnapshot.Flags) != 0 {
+				approved.InterestRatePercent == nil || *approved.InterestRatePercent != "1.2500" ||
+				approved.EligibilitySnapshot == nil || len(approved.EligibilitySnapshot.Guarantors) != 2 ||
+				!flagCodes(approved.EligibilitySnapshot.Flags)["GUARANTOR_NOT_ACCEPTED"] {
 				t.Fatalf("approval lost terms or review snapshot: %+v", approved)
 			}
 			if countRows(t, db, "SELECT COUNT(*) FROM transactions WHERE ledger = 'LOAN'") != 0 {
@@ -161,14 +206,19 @@ func TestLoanAdvisoryChecksAndOverride(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("settings: %d %s", w.Code, w.Body.String())
 	}
-	loan := requestLoan(t, router, member)
+	loan := requestLoan(t, db, router, member)
 	path := "/api/v1/loans/" + loan.ID.String()
 	var checks struct{ Data dto.LoanEligibility }
 	w = sessionRequest(router, http.MethodGet, path+"/eligibility", "", admin, nil)
-	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &checks) != nil || len(checks.Data.Flags) != 2 {
-		t.Fatalf("missing threshold flags: %d %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &checks) != nil {
+		t.Fatalf("eligibility: %d %s", w.Code, w.Body.String())
+	}
+	codes := flagCodes(checks.Data.Flags)
+	if !codes["INSUFFICIENT_SAVINGS"] || !codes["INSUFFICIENT_SHARES"] {
+		t.Fatalf("missing threshold flags: %s", w.Body.String())
 	}
 	terms := loanTerms()
+	terms.OverrideReason = ""
 	if w := sessionRequest(router, http.MethodPost, path+"/approve", invitationBody(t, terms), admin, nil); w.Code != http.StatusConflict {
 		t.Fatalf("approval without override: %d", w.Code)
 	}
@@ -181,12 +231,12 @@ func TestLoanAdvisoryChecksAndOverride(t *testing.T) {
 		}
 	}
 	startPayment(t, router, member, dto.CreatePaymentInput{Purpose: "SAVINGS", Amount: 900_000})
-	other := requestLoan(t, router, member)
+	other := requestLoan(t, db, router, member)
 	terms.OverrideReason = "  Committee approved despite low savings and shares  "
 	approved := loanResult(t, sessionRequest(router, http.MethodPost, path+"/approve", invitationBody(t, terms), admin, nil), http.StatusOK)
 	snapshot := approved.EligibilitySnapshot
 	if snapshot == nil || snapshot.Savings != 100_000 || snapshot.ShareUnits != "1.5000" || snapshot.OtherPendingApplications != 1 ||
-		len(snapshot.Flags) != 3 || approved.OverrideReason == nil || *approved.OverrideReason != strings.TrimSpace(terms.OverrideReason) {
+		!flagCodes(snapshot.Flags)["OTHER_PENDING_APPLICATIONS"] || approved.OverrideReason == nil || *approved.OverrideReason != strings.TrimSpace(terms.OverrideReason) {
 		t.Fatalf("incorrect advisory snapshot: %+v", approved)
 	}
 	if w := sessionRequest(router, http.MethodPut, "/api/v1/loans/settings", `{"minimum_savings":0,"minimum_share_units":"0"}`, admin, nil); w.Code != 200 {
@@ -217,13 +267,13 @@ func TestLoanSelfApprovalAndRejection(t *testing.T) {
 			seedSessionUser(t, db, []string{role, "member"}, true, true)
 			self := invitationAdminToken(t, router)
 			_, reviewer := loanActor(t, db, router, []string{"admin"}, false)
-			loan := requestLoan(t, router, self)
+			loan := requestLoan(t, db, router, self)
 			path := "/api/v1/loans/" + loan.ID.String()
 			if w := sessionRequest(router, http.MethodPost, path+"/approve", invitationBody(t, loanTerms()), self, nil); w.Code != http.StatusForbidden {
 				t.Fatalf("self approval: %d %s", w.Code, w.Body.String())
 			}
 			loanResult(t, sessionRequest(router, http.MethodPost, path+"/approve", invitationBody(t, loanTerms()), reviewer, nil), http.StatusOK)
-			other := requestLoan(t, router, self)
+			other := requestLoan(t, db, router, self)
 			otherPath := "/api/v1/loans/" + other.ID.String()
 			rejected := loanResult(t, sessionRequest(router, http.MethodPost, otherPath+"/reject", `{"reason":"  Documents incomplete  "}`, reviewer, nil), http.StatusOK)
 			if rejected.Status != "REJECTED" || rejected.ReviewReason == nil || *rejected.ReviewReason != "Documents incomplete" || rejected.ApprovedAmount != nil {
@@ -247,9 +297,9 @@ func TestLoanAccessPrivacyAndLists(t *testing.T) {
 	member := invitationAdminToken(t, router)
 	_, admin := loanActor(t, db, router, []string{"admin"}, false)
 	_, other := loanActor(t, db, router, []string{"member"}, true)
-	first := requestLoan(t, router, member)
-	second := requestLoan(t, router, other)
-	requestLoan(t, router, other)
+	first := requestLoan(t, db, router, member)
+	second := requestLoan(t, db, router, other)
+	requestLoan(t, db, router, other)
 	path := "/api/v1/loans/" + first.ID.String()
 	if w := sessionRequest(router, http.MethodGet, path, "", other, nil); w.Code != http.StatusNotFound {
 		t.Fatal("another member's loan was exposed")
@@ -316,21 +366,52 @@ func TestLoanValidationAndDuplicateTransfer(t *testing.T) {
 	seedSessionUser(t, db, []string{"member"}, true, true)
 	member := invitationAdminToken(t, router)
 	_, admin := loanActor(t, db, router, []string{"admin"}, false)
-	for _, body := range []string{`{}`, `{"amount":0,"purpose":"x","duration_months":1}`, `{"amount":1,"purpose":"  ","duration_months":1}`, `{"amount":1,"purpose":"x","duration_months":0}`} {
-		if w := sessionRequest(router, http.MethodPost, "/api/v1/loans", body, member, nil); w.Code != 400 {
-			t.Fatalf("invalid application accepted: %d", w.Code)
+	guarantors := loanGuarantors(t, db)
+	var ownSlug string
+	if err := db.Get(&ownSlug, "SELECT slug FROM members WHERE first_name <> 'Guarantor' ORDER BY created_at LIMIT 1"); err != nil {
+		t.Fatal(err)
+	}
+	for name, change := range map[string]func(*dto.LoanInput){
+		"zero amount":          func(in *dto.LoanInput) { in.Amount = 0 },
+		"blank purpose":        func(in *dto.LoanInput) { in.Purpose = "  " },
+		"zero duration":        func(in *dto.LoanInput) { in.DurationMonths = 0 },
+		"past repayment start": func(in *dto.LoanInput) { in.RepaymentStartDate = "2020-01-01" },
+		"bad date":             func(in *dto.LoanInput) { in.RepaymentStartDate = "01/02/2030" },
+		"no monthly amount":    func(in *dto.LoanInput) { in.MonthlyRepaymentAmount = 0 },
+		"short account":        func(in *dto.LoanInput) { in.DisbursementAccountNumber = "12345" },
+		"blank bank":           func(in *dto.LoanInput) { in.DisbursementBankCode = " " },
+		"unknown bank":         func(in *dto.LoanInput) { in.DisbursementBankCode = "000" },
+		"inactive bank":        func(in *dto.LoanInput) { in.DisbursementBankCode = "999" },
+		"unresolved account":   func(in *dto.LoanInput) { in.DisbursementAccountNumber = "0000000000" },
+		"one guarantor":        func(in *dto.LoanInput) { in.GuarantorMemberNumbers = guarantors[:1] },
+		"same guarantor":       func(in *dto.LoanInput) { in.GuarantorMemberNumbers = []string{guarantors[0], guarantors[0]} },
+		"unknown guarantor":    func(in *dto.LoanInput) { in.GuarantorMemberNumbers = []string{guarantors[0], "ara999999"} },
+		"self guarantor":       func(in *dto.LoanInput) { in.GuarantorMemberNumbers = []string{guarantors[0], ownSlug} },
+		"no declaration":       func(in *dto.LoanInput) { in.DeclarationAccepted = false },
+	} {
+		input := loanApplication(guarantors)
+		change(&input)
+		if w := sessionRequest(router, http.MethodPost, "/api/v1/loans", invitationBody(t, input), member, nil); w.Code != 400 {
+			t.Fatalf("%s accepted: %d %s", name, w.Code, w.Body.String())
 		}
+	}
+	if countRows(t, db, "SELECT COUNT(*) FROM loans") != 0 || countRows(t, db, "SELECT COUNT(*) FROM loan_guarantors") != 0 {
+		t.Fatal("a rejected application left rows behind")
 	}
 	for _, body := range []string{`{"minimum_savings":-1,"minimum_share_units":"1"}`, `{"minimum_savings":0,"minimum_share_units":"-1"}`, `{"minimum_savings":0,"minimum_share_units":"1.12345"}`} {
 		if w := sessionRequest(router, http.MethodPut, "/api/v1/loans/settings", body, admin, nil); w.Code != 400 {
 			t.Fatalf("invalid settings accepted: %d", w.Code)
 		}
 	}
-	loan := requestLoan(t, router, member)
+	loan := requestLoan(t, db, router, member)
 	path := "/api/v1/loans/" + loan.ID.String()
-	for _, rate := range []string{"-1", "100.0001", "NaN", "5.12345"} {
+	// Bye-law 67 caps interest at 15 percent per annum (1.25 percent monthly).
+	for _, rate := range []struct{ value, period string }{
+		{"-1", "MONTHLY"}, {"100.0001", "MONTHLY"}, {"NaN", "MONTHLY"}, {"1.12345", "MONTHLY"},
+		{"1.2501", "MONTHLY"}, {"15.0001", "ANNUAL"},
+	} {
 		terms := loanTerms()
-		terms.InterestRatePercent = rate
+		terms.InterestRatePercent, terms.InterestPeriod = rate.value, rate.period
 		if w := sessionRequest(router, http.MethodPost, path+"/approve", invitationBody(t, terms), admin, nil); w.Code != 400 {
 			t.Fatalf("invalid rate accepted: %d", w.Code)
 		}
@@ -353,7 +434,7 @@ func TestLoanValidationAndDuplicateTransfer(t *testing.T) {
 		}
 	}
 	loanResult(t, sessionRequest(router, http.MethodPost, path+"/disbursement", invitationBody(t, dto.LoanDisbursementInput{Amount: 900_000, PaidAt: time.Now(), Reference: "BANK-REF"}), admin, nil), http.StatusOK)
-	second := requestLoan(t, router, member)
+	second := requestLoan(t, db, router, member)
 	terms := loanTerms()
 	terms.OverrideReason = "Approved despite active loan history"
 	secondPath := "/api/v1/loans/" + second.ID.String()
@@ -373,5 +454,145 @@ func TestLoanValidationAndDuplicateTransfer(t *testing.T) {
 		if w := sessionRequest(router, http.MethodGet, "/api/v1/loans/"+id.id, "", admin, nil); w.Code != id.status {
 			t.Errorf("unknown loan: %d", w.Code)
 		}
+	}
+}
+
+func guarantorToken(t *testing.T, db *sqlx.DB, router http.Handler, slug string) string {
+	t.Helper()
+	if _, err := db.Exec(`UPDATE users SET password_hash = (SELECT password_hash FROM users WHERE email = 'session@example.com')
+		WHERE email = $1`, slug+"@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	var roleID uuid.UUID
+	if err := db.Get(&roleID, `INSERT INTO roles (name) VALUES ('member') ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO user_roles (user_id, role_id) SELECT id, $2 FROM users WHERE email = $1
+		ON CONFLICT DO NOTHING`, slug+"@example.com", roleID); err != nil {
+		t.Fatal(err)
+	}
+	w := sessionRequest(router, http.MethodPost, "/api/v1/login",
+		invitationBody(t, map[string]string{"email": slug + "@example.com", "password": "test-password"}), "", nil)
+	return readAuthResponse(t, w).AccessToken
+}
+
+func TestLoanGuarantorsAndByelawAdvisories(t *testing.T) {
+	t.Parallel()
+	db := sessionTestDB(t)
+	router, _ := paymentsTestRouter(t, db, testOwnerAccount)
+	seedSessionUser(t, db, []string{"member"}, true, true)
+	member := invitationAdminToken(t, router)
+	_, admin := loanActor(t, db, router, []string{"admin"}, false)
+	input := loanApplication(loanGuarantors(t, db))
+	input.RepaymentDurationMonths = 18
+	input.DisbursementBankCode = " 011 "
+	loan := loanResult(t, sessionRequest(router, http.MethodPost, "/api/v1/loans", invitationBody(t, input), member, nil), http.StatusCreated)
+	path := "/api/v1/loans/" + loan.ID.String()
+	// The payout account is recorded as the bank reports it, not as typed.
+	if loan.DisbursementBankCode == nil || *loan.DisbursementBankCode != "011" || *loan.DisbursementBankName != "First Bank of Nigeria" ||
+		*loan.DisbursementAccountName != "SESSION MEMBER" || *loan.DisbursementAccountNumber != "2043541845" {
+		t.Fatalf("payout account not resolved: %+v", loan)
+	}
+
+	var checks struct{ Data dto.LoanEligibility }
+	eligibility := func() map[string]bool {
+		t.Helper()
+		w := sessionRequest(router, http.MethodGet, path+"/eligibility", "", admin, nil)
+		if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &checks) != nil {
+			t.Fatalf("eligibility: %d %s", w.Code, w.Body.String())
+		}
+		return flagCodes(checks.Data.Flags)
+	}
+	codes := eligibility()
+	for _, code := range []string{"MEMBERSHIP_UNDER_SIX_MONTHS", "BELOW_BYELAW_SHARE_MINIMUM", "REPAYMENT_OVER_TWELVE_MONTHS", "GUARANTOR_NOT_ACCEPTED"} {
+		if !codes[code] {
+			t.Fatalf("missing %s in %v", code, codes)
+		}
+	}
+	if len(checks.Data.Guarantors) != 2 || checks.Data.Guarantors[0].Slug != "ara900001" || checks.Data.MembershipActivatedAt == nil {
+		t.Fatalf("guarantor standing missing: %+v", checks.Data)
+	}
+
+	first := guarantorToken(t, db, router, "ara900001")
+	second := guarantorToken(t, db, router, "ara900002")
+	var requests struct {
+		Data dto.ListResponse[dto.GuarantorRequest]
+	}
+	w := sessionRequest(router, http.MethodGet, "/api/v1/loans/guarantor-requests", "", first, nil)
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &requests) != nil || len(requests.Data.Items) != 1 ||
+		requests.Data.Items[0].LoanID != loan.ID || requests.Data.Items[0].Applicant.FirstName == "" || requests.Data.Items[0].Status != "PENDING" {
+		t.Fatalf("guarantor requests: %d %s", w.Code, w.Body.String())
+	}
+	if w := sessionRequest(router, http.MethodPost, path+"/guarantee", `{"decision":"MAYBE"}`, first, nil); w.Code != 400 {
+		t.Fatalf("invalid decision: %d", w.Code)
+	}
+	if w := sessionRequest(router, http.MethodPost, path+"/guarantee", `{"decision":"ACCEPT"}`, member, nil); w.Code != http.StatusNotFound {
+		t.Fatalf("applicant answered as guarantor: %d", w.Code)
+	}
+	for _, token := range []string{first, second} {
+		if w := sessionRequest(router, http.MethodPost, path+"/guarantee", `{"decision":"ACCEPT"}`, token, nil); w.Code != 200 {
+			t.Fatalf("accept guarantee: %d %s", w.Code, w.Body.String())
+		}
+	}
+	if eligibility()["GUARANTOR_NOT_ACCEPTED"] {
+		t.Fatal("accepted guarantees still flagged")
+	}
+	seen := loanResult(t, sessionRequest(router, http.MethodGet, path, "", member, nil), http.StatusOK)
+	if seen.Guarantors[0].Status != "ACCEPTED" || seen.Guarantors[1].RespondedAt == nil {
+		t.Fatalf("applicant cannot see guarantor responses: %+v", seen.Guarantors)
+	}
+
+	// A guarantor with an unpaid fine or an open loan of their own is flagged.
+	if _, err := db.Exec(`INSERT INTO fines (admin_id, member_id, amount, reason, deadline)
+		SELECT (SELECT id FROM users WHERE email <> 'ara900001@example.com' LIMIT 1), id, 10000, 'Late', NOW() + interval '7 days'
+		FROM members WHERE slug = 'ara900001'`); err != nil {
+		t.Fatal(err)
+	}
+	if !eligibility()["GUARANTOR_INDEBTED"] {
+		t.Fatal("guarantor with unpaid fine not flagged")
+	}
+
+	// Bye-law 71: approving more than 12 months is flagged even if requested shorter.
+	terms := loanTerms()
+	terms.DurationMonths = 13
+	approved := loanResult(t, sessionRequest(router, http.MethodPost, path+"/approve", invitationBody(t, terms), admin, nil), http.StatusOK)
+	if !flagCodes(approved.EligibilitySnapshot.Flags)["REPAYMENT_OVER_TWELVE_MONTHS"] {
+		t.Fatal("long approved duration not recorded as an advisory")
+	}
+	if w := sessionRequest(router, http.MethodPost, path+"/guarantee", `{"decision":"DECLINE"}`, first, nil); w.Code != http.StatusConflict {
+		t.Fatalf("guarantor changed answer after review: %d", w.Code)
+	}
+}
+
+func TestBankListAndAccountResolve(t *testing.T) {
+	t.Parallel()
+	db := sessionTestDB(t)
+	router, _ := paymentsTestRouter(t, db, testOwnerAccount)
+	seedSessionUser(t, db, []string{"member"}, true, false)
+	member := invitationAdminToken(t, router)
+
+	var list struct{ Data []dto.Bank }
+	w := sessionRequest(router, http.MethodGet, "/api/v1/banks", "", member, nil)
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &list) != nil {
+		t.Fatalf("banks: %d %s", w.Code, w.Body.String())
+	}
+	names := lo.Map(list.Data, func(b dto.Bank, _ int) string { return b.Name })
+	if !reflect.DeepEqual(names, []string{"Access Bank", "First Bank of Nigeria", "Zenith Bank"}) {
+		t.Fatalf("banks not paged, filtered and sorted: %v", names)
+	}
+
+	var account struct{ Data dto.BankAccount }
+	w = sessionRequest(router, http.MethodGet, "/api/v1/banks/resolve?bank_code=011&account_number=2043541845", "", member, nil)
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &account) != nil ||
+		account.Data.AccountName != "SESSION MEMBER" || account.Data.BankName != "First Bank of Nigeria" {
+		t.Fatalf("resolve: %d %s", w.Code, w.Body.String())
+	}
+	for _, query := range []string{"bank_code=011&account_number=0000000000", "bank_code=011&account_number=123", "bank_code=000&account_number=2043541845"} {
+		if w := sessionRequest(router, http.MethodGet, "/api/v1/banks/resolve?"+query, "", member, nil); w.Code != http.StatusBadRequest {
+			t.Fatalf("%s: want 400, got %d", query, w.Code)
+		}
+	}
+	if w := sessionRequest(router, http.MethodGet, "/api/v1/banks", "", "", nil); w.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous bank list: %d", w.Code)
 	}
 }

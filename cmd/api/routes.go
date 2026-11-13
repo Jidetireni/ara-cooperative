@@ -9,6 +9,7 @@ import (
 func (s *Server) router() {
 	s.Factory.Router.Route("/api/v1", func(r chi.Router) {
 		r.Use(middleware.RequestID)
+		r.Use(s.Factory.Middleware.RequestIDResponse)
 		r.Use(s.Factory.Middleware.LoggerMiddleware)
 
 		r.Get("/health", s.Handlers.HealthCheckHandler)
@@ -32,6 +33,9 @@ func (s *Server) router() {
 
 				r.Get("/me", s.Handlers.CurrentMember)
 				r.Put("/me", s.Handlers.UpdateMemberProfile)
+				r.Post("/me/passport-photo/upload", s.Handlers.PassportPhotoUpload)
+				r.Put("/me/passport-photo", s.Handlers.SavePassportPhoto)
+				r.Get("/search", s.Handlers.SearchMembers)
 			})
 
 			r.Group(func(r chi.Router) {
@@ -40,6 +44,7 @@ func (s *Server) router() {
 
 				r.Post("/", s.Handlers.CreateMember)
 				r.Get("/", s.Handlers.ListMembers)
+				r.Get("/{slug}/profile", s.Handlers.AdminMemberProfile)
 			})
 
 			r.Group(func(r chi.Router) {
@@ -112,6 +117,13 @@ func (s *Server) router() {
 			})
 		})
 
+		r.Route("/banks", func(r chi.Router) {
+			r.Use(s.Factory.Middleware.RequireAuth)
+			r.Use(s.Factory.Middleware.RequireRole(constants.RoleMember))
+			r.Get("/", s.Handlers.ListBanks)
+			r.Get("/resolve", s.Handlers.ResolveBankAccount)
+		})
+
 		r.Route("/loans", func(r chi.Router) {
 			r.Use(s.Factory.Middleware.RequireAuth)
 			r.Get("/{id}", s.Handlers.GetLoan)
@@ -120,6 +132,8 @@ func (s *Server) router() {
 				r.Use(s.Factory.Middleware.RequireActiveMember)
 				r.Post("/", s.Handlers.CreateLoan)
 				r.Get("/me", s.Handlers.ListMyLoans)
+				r.Get("/guarantor-requests", s.Handlers.ListGuarantorRequests)
+				r.Post("/{id}/guarantee", s.Handlers.RespondAsGuarantor)
 			})
 			r.Group(func(r chi.Router) {
 				r.Use(s.Factory.Middleware.RequireRole(constants.RoleAdmin))

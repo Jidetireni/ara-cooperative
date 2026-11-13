@@ -59,19 +59,21 @@ type populatedFineFlat struct {
 	TsRejectedAt  *time.Time `json:"ts_rejected_at"`
 	TsCreatedAt   *time.Time `json:"ts_created_at"`
 
-	MbID             uuid.UUID  `json:"mb_id"`
-	MbUserID         uuid.UUID  `json:"mb_user_id"`
-	MbFirstName      string     `json:"mb_first_name"`
-	MbLastName       string     `json:"mb_last_name"`
-	MbSlug           string     `json:"mb_slug"`
-	MbPhone          *string    `json:"mb_phone"`
-	MbAddress        *string    `json:"mb_address"`
-	MbNextOfKinName  *string    `json:"mb_next_of_kin_name"`
-	MbNextOfKinPhone *string    `json:"mb_next_of_kin_phone"`
-	MbActivatedAt    *time.Time `json:"mb_activated_at"`
-	MbCreatedAt      *time.Time `json:"mb_created_at"`
-	MbUpdatedAt      *time.Time `json:"mb_updated_at"`
-	MbDeletedAt      *time.Time `json:"mb_deleted_at"`
+	MbID                    uuid.UUID  `json:"mb_id"`
+	MbUserID                uuid.UUID  `json:"mb_user_id"`
+	MbFirstName             string     `json:"mb_first_name"`
+	MbLastName              string     `json:"mb_last_name"`
+	MbSlug                  string     `json:"mb_slug"`
+	MbPassportPhotoPublicID *string    `json:"mb_passport_photo_public_id"`
+	MbPassportPhotoVersion  *int64     `json:"mb_passport_photo_version"`
+	MbPhone                 *string    `json:"mb_phone"`
+	MbAddress               *string    `json:"mb_address"`
+	MbNextOfKinName         *string    `json:"mb_next_of_kin_name"`
+	MbNextOfKinPhone        *string    `json:"mb_next_of_kin_phone"`
+	MbActivatedAt           *time.Time `json:"mb_activated_at"`
+	MbCreatedAt             *time.Time `json:"mb_created_at"`
+	MbUpdatedAt             *time.Time `json:"mb_updated_at"`
+	MbDeletedAt             *time.Time `json:"mb_deleted_at"`
 }
 
 type FineRepositoryFilter struct {
@@ -118,6 +120,8 @@ func (f *FineRepository) populatedSelectColumns() []string {
 		"mb.first_name AS mb_first_name",
 		"mb.last_name AS mb_last_name",
 		"mb.slug AS mb_slug",
+		"mb.passport_photo_public_id AS mb_passport_photo_public_id",
+		"mb.passport_photo_version AS mb_passport_photo_version",
 		"mb.phone AS mb_phone",
 		"mb.address AS mb_address",
 		"mb.next_of_kin_name AS mb_next_of_kin_name",
@@ -320,19 +324,21 @@ func (f *FineRepository) mapFlatToPopulated(flat *populatedFineFlat) *PopulatedF
 	}
 
 	member := Member{
-		ID:             flat.MbID,
-		UserID:         flat.MbUserID,
-		FirstName:      flat.MbFirstName,
-		LastName:       flat.MbLastName,
-		Slug:           flat.MbSlug,
-		Phone:          ToNullString(flat.MbPhone),
-		Address:        ToNullString(flat.MbAddress),
-		NextOfKinName:  ToNullString(flat.MbNextOfKinName),
-		NextOfKinPhone: ToNullString(flat.MbNextOfKinPhone),
-		ActivatedAt:    ToNullTime(flat.MbActivatedAt),
-		CreatedAt:      lo.FromPtrOr(flat.MbCreatedAt, time.Time{}),
-		UpdatedAt:      ToNullTime(flat.MbUpdatedAt),
-		DeletedAt:      ToNullTime(flat.MbDeletedAt),
+		ID:                    flat.MbID,
+		UserID:                flat.MbUserID,
+		FirstName:             flat.MbFirstName,
+		LastName:              flat.MbLastName,
+		Slug:                  flat.MbSlug,
+		PassportPhotoPublicID: ToNullString(flat.MbPassportPhotoPublicID),
+		PassportPhotoVersion:  ToNullInt64(flat.MbPassportPhotoVersion),
+		Phone:                 ToNullString(flat.MbPhone),
+		Address:               ToNullString(flat.MbAddress),
+		NextOfKinName:         ToNullString(flat.MbNextOfKinName),
+		NextOfKinPhone:        ToNullString(flat.MbNextOfKinPhone),
+		ActivatedAt:           ToNullTime(flat.MbActivatedAt),
+		CreatedAt:             lo.FromPtrOr(flat.MbCreatedAt, time.Time{}),
+		UpdatedAt:             ToNullTime(flat.MbUpdatedAt),
+		DeletedAt:             ToNullTime(flat.MbDeletedAt),
 	}
 
 	populated := &PopulatedFine{
@@ -391,4 +397,19 @@ func (f *FineRepository) MapRepositoryToDTOModel(populated *PopulatedFine) *dto.
 	}
 
 	return result
+}
+
+// Count returns the number of fines matching the filter.
+func (f *FineRepository) Count(ctx context.Context, filter FineRepositoryFilter, tx *sqlx.Tx) (int64, error) {
+	query, args, err := f.buildPopulatedQuery(filter, QueryOptions{Type: lo.ToPtr(QueryTypeCount)})
+	if err != nil {
+		return 0, err
+	}
+	var count int64
+	if tx != nil {
+		err = tx.GetContext(ctx, &count, query, args...)
+	} else {
+		err = f.db.GetContext(ctx, &count, query, args...)
+	}
+	return count, err
 }

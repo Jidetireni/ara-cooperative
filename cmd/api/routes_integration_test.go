@@ -23,12 +23,14 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/helpers"
 	"github.com/Jidetireni/ara-cooperative/internal/middleware"
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
+	"github.com/Jidetireni/ara-cooperative/internal/services/banks"
 	"github.com/Jidetireni/ara-cooperative/internal/services/campaigns"
 	"github.com/Jidetireni/ara-cooperative/internal/services/loans"
 	"github.com/Jidetireni/ara-cooperative/internal/services/members"
 	"github.com/Jidetireni/ara-cooperative/internal/services/payments"
 	"github.com/Jidetireni/ara-cooperative/internal/services/transactions"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
+	"github.com/Jidetireni/ara-cooperative/pkg/cloudinary"
 	loggerpkg "github.com/Jidetireni/ara-cooperative/pkg/logger"
 	"github.com/Jidetireni/ara-cooperative/pkg/paystack"
 	"github.com/Jidetireni/ara-cooperative/pkg/token"
@@ -266,6 +268,14 @@ func invitationTestRouter(t *testing.T, db *sqlx.DB, sender members.EmailPkg) ht
 	return buildTestRouter(t, db, cfg, sender, paystack.New("", ""))
 }
 
+// testImages signs with a fixed secret so tests can forge Cloudinary's
+// upload response signature.
+const testImagesSecret = "test-cloudinary-secret"
+
+func testImages() *cloudinary.Client {
+	return cloudinary.New("demo", "test-key", testImagesSecret)
+}
+
 func buildTestRouter(t *testing.T, db *sqlx.DB, cfg *config.Config, sender members.EmailPkg, paystackClient *paystack.Client) http.Handler {
 	t.Helper()
 	if cfg.Shares.UnitPrice == 0 {
@@ -293,6 +303,7 @@ func buildTestRouter(t *testing.T, db *sqlx.DB, cfg *config.Config, sender membe
 		repository.NewPermissionRepository(db),
 		repository.NewTokenRepository(db),
 		sender,
+		testImages(),
 		log,
 	)
 	repos := &factory.Repositories{
@@ -308,12 +319,14 @@ func buildTestRouter(t *testing.T, db *sqlx.DB, cfg *config.Config, sender membe
 	transactionService := transactions.New(db, repos.Transaction, repos.Member, repos.Share, repos.Fine, cfg.Shares.UnitPrice, log)
 	paymentService := payments.New(db, cfg, repos.Payment, repos.Member, repos.User, repos.Transaction,
 		repos.Share, repos.Fine, repos.Campaign, transactionService, paystackClient, log)
+	bankService := banks.New(paystackClient, log)
 	fx := &factory.Factory{
 		Router: chi.NewRouter(),
 		Services: &factory.Services{
 			User: service, Member: memberService, Transactions: transactionService, Payments: paymentService,
 			Campaigns: campaigns.New(db, repos.Campaign, repos.Member, repos.Payment),
-			Loans:     loans.New(db, repos.Loan, repos.Member, repos.Transaction, repos.Share),
+			Loans:     loans.New(db, repos.Loan, repos.Member, repos.Transaction, repos.Share, repos.Fine, bankService),
+			Banks:     bankService,
 		},
 		Repositories: repos,
 		Pkgs:         &factory.Packages{Logger: log, Paystack: paystackClient},

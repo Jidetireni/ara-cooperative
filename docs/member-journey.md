@@ -22,11 +22,23 @@ Implemented setup: `make owner/bootstrap` uses `OWNER_EMAIL` and `DB_URL` to cre
 
 Runtime authorization reloads current roles from storage rather than trusting email strings or old role claims. Only the owner grants or revokes admin access through the admin-management endpoints. Owner capabilities include admin access, while personal membership remains separate. See `../frontend.md` for the HTTP contract.
 
+## Paper Forms Are the Source of Truth
+
+The cooperative's paper membership application form, loan application form and bye-laws define what the app collects. The member profile stores every field on the membership form (title, names, contacts, place of birth, nationality, state of origin, home town, LGA, next of kin with address, current workplace, up to four beneficiaries, monthly contribution pledge, referrer, declaration and passport photo). Loan applications store every applicant field on the loan form (amount, purpose, duration, proposed repayment start/duration/monthly amount, disbursement bank details, two guarantors and the authorization declaration). Name, contact and membership figures already on record are not re-entered.
+
+- The monthly contribution pledge is information only; savings remain voluntary.
+- Passport photos are stored in Cloudinary as `ara/<ENV>/members/<member id>/passport`. The API names and signs the upload, the browser sends the file straight to Cloudinary, and the API verifies Cloudinary's response signature before saving. The database keeps only the public ID and version; the frontend builds the URL and shows a blurred placeholder first. The membership fee requires the saved form and declaration but not the photo.
+- Guarantors must be members and accept in the app in place of signing. They may change their answer until the application is reviewed.
+- The referrer ("introduced by") and loan guarantors are members picked with a member search (pending members are marked) by name or membership number; the API stores the referrer's name from their record.
+- The loan payout account is chosen from Paystack's bank list and confirmed with Paystack's account resolve; the bank's account holder name is stored, not a typed one.
+- Bye-law loan rules are advisory flags on admin review, overridable with a recorded reason: no loan within 6 months of activation (65), at least 50 shares (46), repayment within 12 months (71), two accepting, active guarantors (68) who are not on loan or indebted (loan form). Interest above 15% per annum (67) is rejected outright.
+- Not yet modelled, kept as open decisions: committee acceptance or rejection of membership applications (bye-law 5, the form's "For official use" section) and two-step loan approval by the Loan Committee Chairman and the ARA President. One admin approval remains sufficient.
+
 ## Joining and Login
 
 1. An admin invites a member using their name and email.
 2. The invited member sets a password and signs in with email and password.
-3. The member completes their phone, address, and next-of-kin details.
+3. The member completes the membership application form (see above), accepts its declaration, and uploads a passport photo.
 4. The application displays the NGN 1,000 one-time membership fee, maintenance fee, Paystack charge, and total payable.
 5. The member pays through Paystack. The application shows processing until the backend verifies success.
 6. Verified payment records the membership fee and activates membership together.
@@ -68,7 +80,7 @@ Campaign clarification: required campaigns apply to all active members. Both fix
 
 ## Loan Applications and External Disbursement
 
-A member requests an amount, purpose, and duration. An admin sets the final approved terms. Record the selected flat-rate or reducing-balance interest method, rate, and monthly or annual rate period explicitly. Repayment calculations and schedules remain deferred.
+A member completes the loan application form: amount, purpose, duration, proposed repayment plan, disbursement bank account, two guarantors, and the declaration. An admin sets the final approved terms. Record the selected flat-rate or reducing-balance interest method, rate, and monthly or annual rate period explicitly. Repayment calculations and schedules remain deferred.
 
 Admins configure minimum savings and shareholding thresholds for advisory checks. Show savings, shares, and available loan application/disbursement history. An admin may approve despite an advisory flag by recording a reason. Passing checks must never automatically approve a loan.
 
@@ -91,6 +103,7 @@ Refund processing and detailed refund records are deferred. For now an admin set
 - Loan repayments: earlier decisions and unresolved calculations are preserved in `future-loan-repayments.md`; the entire feature is deferred.
 - Dividends and member savings withdrawals are outside this version.
 - Confirm any maintenance-fee exemptions before introducing them.
+- Committee acceptance of membership applications and two-step loan approval (Loan Committee Chairman, then ARA President) from the paper forms.
 - Define non-refund campaign resolutions and which payments qualify for refunds.
 - Define handling of duplicate successful payments and the refund treatment of Paystack processing charges.
 

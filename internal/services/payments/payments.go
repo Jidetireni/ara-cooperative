@@ -176,14 +176,19 @@ func (p *Payment) Create(ctx context.Context, input dto.CreatePaymentInput) (*dt
 		return nil, err
 	}
 	if plan.purpose == repository.LedgerTypeREGISTRATIONFEE {
+		// The membership form's declaration is accepted only when the whole form
+		// is saved, so it marks a complete application. The passport photo is
+		// not required here, so a storage outage cannot block joining.
+		incomplete := !plan.member.DeclarationAcceptedAt.Valid
 		for _, field := range []sql.NullString{
 			plan.member.Phone, plan.member.Address, plan.member.NextOfKinName, plan.member.NextOfKinPhone,
 		} {
-			if !field.Valid || strings.TrimSpace(field.String) == "" {
-				return nil, &svc.APIError{
-					Status:  http.StatusConflict,
-					Message: "complete your phone, address, and next-of-kin details before paying the membership fee",
-				}
+			incomplete = incomplete || !field.Valid || strings.TrimSpace(field.String) == ""
+		}
+		if incomplete {
+			return nil, &svc.APIError{
+				Status:  http.StatusConflict,
+				Message: "complete your membership application (contact, next-of-kin and beneficiary details, and the declaration) before paying the membership fee",
 			}
 		}
 	}
