@@ -17,6 +17,7 @@ import (
 
 	"github.com/Jidetireni/ara-cooperative/internal/config"
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
+	"github.com/Jidetireni/ara-cooperative/internal/services/members"
 	"github.com/Jidetireni/ara-cooperative/internal/services/transactions"
 	"github.com/Jidetireni/ara-cooperative/pkg/paystack"
 	"github.com/google/uuid"
@@ -123,6 +124,11 @@ func (f *fakePaystack) lastCheckout(t *testing.T) paystack.InitializeInput {
 
 func paymentsTestRouter(t *testing.T, db *sqlx.DB, subaccount string) (http.Handler, *fakePaystack) {
 	t.Helper()
+	return paymentsTestRouterWithEmail(t, db, subaccount, nil)
+}
+
+func paymentsTestRouterWithEmail(t *testing.T, db *sqlx.DB, subaccount string, sender members.EmailPkg) (http.Handler, *fakePaystack) {
+	t.Helper()
 	fake, server := newFakePaystack(t)
 	cfg := &config.Config{
 		Server: config.ServerConfig{FEURL: "http://localhost:3000"},
@@ -132,7 +138,7 @@ func paymentsTestRouter(t *testing.T, db *sqlx.DB, subaccount string) (http.Hand
 		},
 		Payments: config.PaymentsConfig{MaintenanceFeePercent: testMaintenanceFee},
 	}
-	return buildTestRouter(t, db, cfg, nil, paystack.New(testPaystackKey, server.URL)), fake
+	return buildTestRouter(t, db, cfg, sender, paystack.New(testPaystackKey, server.URL)), fake
 }
 
 func paymentResult(t *testing.T, w *httptest.ResponseRecorder, status int) dto.Payment {

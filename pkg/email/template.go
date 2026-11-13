@@ -19,7 +19,7 @@ type Templates struct {
 	text map[EmailTemplateType]*texttemplate.Template
 }
 
-var templateTypes = []EmailTemplateType{EmailTemplateTypeMemberInvitation}
+var templateTypes = []EmailTemplateType{EmailTemplateTypeMemberInvitation, EmailTemplateTypeLoanGuarantorRequest}
 
 // NewTemplates parses the embedded templates; it fails only if a template is malformed.
 func NewTemplates() (*Templates, error) {

@@ -213,6 +213,23 @@ func (h *Handlers) ListGuarantorRequests(w http.ResponseWriter, r *http.Request)
 }
 
 // RespondAsGuarantor accepts or declines a guarantee for a pending application.
+// GetGuaranteeRequest returns the signed-in member's guarantee request on a loan.
+func (h *Handlers) GetGuaranteeRequest(w http.ResponseWriter, r *http.Request) {
+	id, err := loanID(r)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	result, err := h.factory.Services.Loans.GuaranteeRequest(r.Context(), id)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	if err := h.writeJSON(w, http.StatusOK, result, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
 func (h *Handlers) RespondAsGuarantor(w http.ResponseWriter, r *http.Request) {
 	id, err := loanID(r)
 	if err != nil {

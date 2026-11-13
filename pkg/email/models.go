@@ -5,6 +5,8 @@ type EmailTemplateType string
 const (
 	// EmailTemplateTypeMemberInvitation invites a member to set a password or sign in.
 	EmailTemplateTypeMemberInvitation EmailTemplateType = "member_invitation"
+	// EmailTemplateTypeLoanGuarantorRequest asks a member to accept or decline guaranteeing a loan.
+	EmailTemplateTypeLoanGuarantorRequest EmailTemplateType = "loan_guarantor_request"
 )
 
 type SendEmailInput struct {
@@ -31,4 +33,17 @@ type MemberInvitationData struct {
 	NeedsPasswordSetup bool
 	// ExpiresInMinutes is shown for set-password links.
 	ExpiresInMinutes int
+}
+
+// LoanGuarantorRequestData fills the loan_guarantor_request template.
+type LoanGuarantorRequestData struct {
+	FirstName       string
+	ApplicantName   string
+	ApplicantNumber string
+	// Amount is the requested amount, formatted for reading (for example ₦400,000.00).
+	Amount         string
+	Purpose        string
+	DurationMonths int32
+	// ActionURL opens the page where the guarantor accepts or declines.
+	ActionURL string
 }

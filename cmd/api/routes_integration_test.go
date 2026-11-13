@@ -325,8 +325,9 @@ func buildTestRouter(t *testing.T, db *sqlx.DB, cfg *config.Config, sender membe
 		Services: &factory.Services{
 			User: service, Member: memberService, Transactions: transactionService, Payments: paymentService,
 			Campaigns: campaigns.New(db, repos.Campaign, repos.Member, repos.Payment),
-			Loans:     loans.New(db, repos.Loan, repos.Member, repos.Transaction, repos.Share, repos.Fine, bankService),
-			Banks:     bankService,
+			Loans: loans.New(db, repos.Loan, repos.Member, repos.Transaction, repos.Share, repos.Fine, bankService,
+				sender, cfg.Server.FEURL, log),
+			Banks: bankService,
 		},
 		Repositories: repos,
 		Pkgs:         &factory.Packages{Logger: log, Paystack: paystackClient},

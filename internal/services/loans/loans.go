@@ -13,6 +13,7 @@ import (
 	"github.com/Jidetireni/ara-cooperative/internal/repository"
 	svc "github.com/Jidetireni/ara-cooperative/internal/services"
 	"github.com/Jidetireni/ara-cooperative/internal/services/users"
+	"github.com/Jidetireni/ara-cooperative/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/samber/lo"
@@ -73,6 +74,10 @@ type Loan struct {
 	ShareRepo       ShareRepository
 	FineRepo        FineRepository
 	Banks           BankResolver
+	Email           EmailSender
+	// FEURL is the member app's base URL, for links in guarantor emails.
+	FEURL  string
+	Logger *logger.Logger
 }
 
 func New(
@@ -83,10 +88,13 @@ func New(
 	shareRepo ShareRepository,
 	fineRepo FineRepository,
 	banks BankResolver,
+	emailSender EmailSender,
+	feURL string,
+	log *logger.Logger,
 ) *Loan {
 	return &Loan{
 		DB: db, LoanRepo: loanRepo, MemberRepo: memberRepo, TransactionRepo: transactionRepo,
-		ShareRepo: shareRepo, FineRepo: fineRepo, Banks: banks,
+		ShareRepo: shareRepo, FineRepo: fineRepo, Banks: banks, Email: emailSender, FEURL: feURL, Logger: log,
 	}
 }
 
@@ -170,6 +178,7 @@ func (l *Loan) Create(ctx context.Context, input dto.LoanInput) (result *dto.Loa
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	l.requestGuarantees(ctx, loan.ID)
 	return l.Get(ctx, loan.ID)
 }
 

@@ -25,6 +25,8 @@ type PopulatedLoanGuarantor struct {
 	Member    Member
 	Loan      Loan
 	Applicant Member
+	// MemberEmail is the guarantor's sign-in address, for guarantee requests.
+	MemberEmail string
 }
 
 type populatedLoanGuarantorFlat struct {
@@ -38,6 +40,7 @@ type populatedLoanGuarantorFlat struct {
 	GmActivated  *time.Time `json:"gm_activated_at"`
 	GmPhotoID    *string    `json:"gm_passport_photo_public_id"`
 	GmPhotoVer   *int64     `json:"gm_passport_photo_version"`
+	GmEmail      string     `json:"gm_email"`
 
 	LnMemberID        uuid.UUID `json:"ln_member_id"`
 	LnRequestedAmount int64     `json:"ln_requested_amount"`
@@ -62,6 +65,7 @@ func (l *LoanRepository) guarantorQuery(filter LoanGuarantorRepositoryFilter, op
 		"gm.middle_name AS gm_middle_name", "gm.last_name AS gm_last_name", "gm.address AS gm_address",
 		"gm.activated_at AS gm_activated_at",
 		"gm.passport_photo_public_id AS gm_passport_photo_public_id", "gm.passport_photo_version AS gm_passport_photo_version",
+		"gu.email AS gm_email",
 		"ln.member_id AS ln_member_id", "ln.requested_amount AS ln_requested_amount", "ln.purpose AS ln_purpose",
 		"ln.requested_duration_months AS ln_requested_duration_months", "ln.status AS ln_status",
 		"ln.created_at AS ln_created_at",
@@ -70,6 +74,7 @@ func (l *LoanRepository) guarantorQuery(filter LoanGuarantorRepositoryFilter, op
 		"ap.passport_photo_public_id AS ap_passport_photo_public_id", "ap.passport_photo_version AS ap_passport_photo_version",
 	).From("loan_guarantors lg").
 		Join("members gm ON gm.id = lg.member_id").
+		Join("users gu ON gu.id = gm.user_id").
 		Join("loans ln ON ln.id = lg.loan_id").
 		Join("members ap ON ap.id = ln.member_id")
 	if len(filter.LoanIDs) > 0 {
@@ -103,6 +108,7 @@ func (l *LoanRepository) guarantorQuery(filter LoanGuarantorRepositoryFilter, op
 func (l *LoanRepository) mapGuarantorFlat(flat *populatedLoanGuarantorFlat) *PopulatedLoanGuarantor {
 	return &PopulatedLoanGuarantor{
 		LoanGuarantor: flat.LoanGuarantor,
+		MemberEmail:   flat.GmEmail,
 		Member: Member{
 			ID: flat.MemberID, UserID: flat.GmUserID, Slug: flat.GmSlug, FirstName: flat.GmFirstName,
 			MiddleName: ToNullString(flat.GmMiddleName), LastName: flat.GmLastName,

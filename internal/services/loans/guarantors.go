@@ -32,6 +32,26 @@ func (l *Loan) GuarantorRequests(
 	}, nil
 }
 
+// GuaranteeRequest returns the current member's guarantee request on one loan,
+// for the page a guarantor opens from the request email.
+func (l *Loan) GuaranteeRequest(ctx context.Context, loanID uuid.UUID) (*dto.GuarantorRequest, error) {
+	member, err := l.currentMember(ctx)
+	if err != nil {
+		return nil, err
+	}
+	guarantors, err := l.LoanRepo.ListGuarantors(ctx, repository.LoanGuarantorRepositoryFilter{
+		LoanID: &loanID, MemberID: &member.ID,
+	}, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(guarantors) == 0 {
+		return nil, apiError(http.StatusNotFound, "you are not a guarantor on this loan application")
+	}
+	request := mapRequest(guarantors[0])
+	return &request, nil
+}
+
 func mapRequest(g *repository.PopulatedLoanGuarantor) dto.GuarantorRequest {
 	request := dto.GuarantorRequest{
 		LoanID: g.LoanID, Applicant: memberCard(g.Applicant), RequestedAmount: g.Loan.RequestedAmount,

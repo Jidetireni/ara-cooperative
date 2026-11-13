@@ -166,8 +166,9 @@ func New(cfg *config.Config) (*Factory, func(), error) {
 				Transactions: transactionService,
 				Payments:     paymentsService,
 				Campaigns:    campaigns.New(db.DB, campaignRepo, memberRepo, paymentRepo),
-				Loans:        loans.New(db.DB, loanRepo, memberRepo, transactionRepo, shareRepo, fineRepo, banksService),
-				Banks:        banksService,
+				Loans: loans.New(db.DB, loanRepo, memberRepo, transactionRepo, shareRepo, fineRepo, banksService,
+					email, cfg.Server.FEURL, logger),
+				Banks: banksService,
 			},
 			Repositories: &Repositories{
 				Member:      memberRepo,

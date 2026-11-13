@@ -43,3 +43,26 @@ func TestMemberInvitationTemplates(t *testing.T) {
 		})
 	}
 }
+
+func TestLoanGuarantorRequestTemplate(t *testing.T) {
+	data := LoanGuarantorRequestData{
+		FirstName: "Bola", ApplicantName: `Ada <script>`, ApplicantNumber: "ARA000001", Amount: "₦400,000.00",
+		Purpose: "School fees", DurationMonths: 1, ActionURL: "https://app.example.com/guarantees/abc",
+	}
+	got, err := Render(EmailTemplateTypeLoanGuarantorRequest, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := regexp.MustCompile(`href="([^"]+)"`).FindStringSubmatch(got.HTML)
+	if len(match) != 2 || html.UnescapeString(match[1]) != data.ActionURL {
+		t.Fatalf("first link = %q, want %q", match, data.ActionURL)
+	}
+	if strings.Contains(got.HTML, "<script>") {
+		t.Fatal("applicant name must be escaped in HTML")
+	}
+	for _, want := range []string{"a loan of ₦400,000.00", "(ARA000001)", "Duration: 1 month\n", data.ActionURL} {
+		if !strings.Contains(got.Text, want) {
+			t.Fatalf("text part missing %q:\n%s", want, got.Text)
+		}
+	}
+}
