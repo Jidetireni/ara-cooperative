@@ -9,6 +9,7 @@ import (
 func (s *Server) router() {
 	s.Factory.Router.Route("/api/v1", func(r chi.Router) {
 		r.Use(middleware.RequestID)
+		r.Use(s.Factory.Middleware.RequestIDResponse)
 		r.Use(s.Factory.Middleware.LoggerMiddleware)
 
 		r.Get("/health", s.Handlers.HealthCheckHandler)

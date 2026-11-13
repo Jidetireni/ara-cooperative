@@ -19,6 +19,8 @@ Dividends, savings withdrawals, and the entire loan-repayment feature are outsid
 
 Use a same-origin reverse proxy for the frontend and API. The API currently has no browser CORS configuration. A frontend dev-server proxy can forward `/api/v1` to the configured API port.
 
+API responses include an `X-Request-ID` header matching the request log's `request_id`, including error responses. Clients may send an optional `X-Request-ID`; otherwise, the API generates one. Read it with `response.headers.get('X-Request-ID')` and include it in error reports to help locate the corresponding logs.
+
 Successful responses use:
 
 ```json
