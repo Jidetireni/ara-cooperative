@@ -303,21 +303,23 @@ func (l *LoanRepository) MapRepositoryToDTOModel(loan *PopulatedLoan) *dto.Loan 
 
 type populatedLoanFlat struct {
 	Loan
-	MbID             uuid.UUID  `json:"mb_id"`
-	MbUserID         uuid.UUID  `json:"mb_user_id"`
-	MbFirstName      string     `json:"mb_first_name"`
-	MbMiddleName     *string    `json:"mb_middle_name"`
-	MbLastName       string     `json:"mb_last_name"`
-	MbSlug           string     `json:"mb_slug"`
-	MbPhone          *string    `json:"mb_phone"`
-	MbAddress        *string    `json:"mb_address"`
-	MbNextOfKinName  *string    `json:"mb_next_of_kin_name"`
-	MbNextOfKinAddr  *string    `json:"mb_next_of_kin_address"`
-	MbNextOfKinPhone *string    `json:"mb_next_of_kin_phone"`
-	MbActivatedAt    *time.Time `json:"mb_activated_at"`
-	MbCreatedAt      *time.Time `json:"mb_created_at"`
-	MbUpdatedAt      *time.Time `json:"mb_updated_at"`
-	MbDeletedAt      *time.Time `json:"mb_deleted_at"`
+	MbID                    uuid.UUID  `json:"mb_id"`
+	MbUserID                uuid.UUID  `json:"mb_user_id"`
+	MbFirstName             string     `json:"mb_first_name"`
+	MbMiddleName            *string    `json:"mb_middle_name"`
+	MbLastName              string     `json:"mb_last_name"`
+	MbSlug                  string     `json:"mb_slug"`
+	MbPassportPhotoPublicID *string    `json:"mb_passport_photo_public_id"`
+	MbPassportPhotoVersion  *int64     `json:"mb_passport_photo_version"`
+	MbPhone                 *string    `json:"mb_phone"`
+	MbAddress               *string    `json:"mb_address"`
+	MbNextOfKinName         *string    `json:"mb_next_of_kin_name"`
+	MbNextOfKinAddr         *string    `json:"mb_next_of_kin_address"`
+	MbNextOfKinPhone        *string    `json:"mb_next_of_kin_phone"`
+	MbActivatedAt           *time.Time `json:"mb_activated_at"`
+	MbCreatedAt             *time.Time `json:"mb_created_at"`
+	MbUpdatedAt             *time.Time `json:"mb_updated_at"`
+	MbDeletedAt             *time.Time `json:"mb_deleted_at"`
 }
 
 func (l *LoanRepository) populatedSelectColumns() []string {
@@ -329,6 +331,8 @@ func (l *LoanRepository) populatedSelectColumns() []string {
 		"mb.middle_name AS mb_middle_name",
 		"mb.last_name AS mb_last_name",
 		"mb.slug AS mb_slug",
+		"mb.passport_photo_public_id AS mb_passport_photo_public_id",
+		"mb.passport_photo_version AS mb_passport_photo_version",
 		"mb.phone AS mb_phone",
 		"mb.address AS mb_address",
 		"mb.next_of_kin_name AS mb_next_of_kin_name",
@@ -345,21 +349,23 @@ func (l *LoanRepository) mapFlatToPopulated(flat *populatedLoanFlat) *PopulatedL
 	return &PopulatedLoan{
 		Loan: flat.Loan,
 		Member: Member{
-			ID:               flat.MbID,
-			UserID:           flat.MbUserID,
-			FirstName:        flat.MbFirstName,
-			MiddleName:       ToNullString(flat.MbMiddleName),
-			LastName:         flat.MbLastName,
-			Slug:             flat.MbSlug,
-			Phone:            ToNullString(flat.MbPhone),
-			Address:          ToNullString(flat.MbAddress),
-			NextOfKinName:    ToNullString(flat.MbNextOfKinName),
-			NextOfKinAddress: ToNullString(flat.MbNextOfKinAddr),
-			NextOfKinPhone:   ToNullString(flat.MbNextOfKinPhone),
-			ActivatedAt:      ToNullTime(flat.MbActivatedAt),
-			CreatedAt:        lo.FromPtrOr(flat.MbCreatedAt, time.Time{}),
-			UpdatedAt:        ToNullTime(flat.MbUpdatedAt),
-			DeletedAt:        ToNullTime(flat.MbDeletedAt),
+			ID:                    flat.MbID,
+			UserID:                flat.MbUserID,
+			FirstName:             flat.MbFirstName,
+			MiddleName:            ToNullString(flat.MbMiddleName),
+			LastName:              flat.MbLastName,
+			Slug:                  flat.MbSlug,
+			PassportPhotoPublicID: ToNullString(flat.MbPassportPhotoPublicID),
+			PassportPhotoVersion:  ToNullInt64(flat.MbPassportPhotoVersion),
+			Phone:                 ToNullString(flat.MbPhone),
+			Address:               ToNullString(flat.MbAddress),
+			NextOfKinName:         ToNullString(flat.MbNextOfKinName),
+			NextOfKinAddress:      ToNullString(flat.MbNextOfKinAddr),
+			NextOfKinPhone:        ToNullString(flat.MbNextOfKinPhone),
+			ActivatedAt:           ToNullTime(flat.MbActivatedAt),
+			CreatedAt:             lo.FromPtrOr(flat.MbCreatedAt, time.Time{}),
+			UpdatedAt:             ToNullTime(flat.MbUpdatedAt),
+			DeletedAt:             ToNullTime(flat.MbDeletedAt),
 		},
 	}
 }

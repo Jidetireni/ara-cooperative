@@ -36,6 +36,8 @@ type populatedLoanGuarantorFlat struct {
 	GmLastName   string     `json:"gm_last_name"`
 	GmAddress    *string    `json:"gm_address"`
 	GmActivated  *time.Time `json:"gm_activated_at"`
+	GmPhotoID    *string    `json:"gm_passport_photo_public_id"`
+	GmPhotoVer   *int64     `json:"gm_passport_photo_version"`
 
 	LnMemberID        uuid.UUID `json:"ln_member_id"`
 	LnRequestedAmount int64     `json:"ln_requested_amount"`
@@ -49,6 +51,8 @@ type populatedLoanGuarantorFlat struct {
 	ApMiddleName *string    `json:"ap_middle_name"`
 	ApLastName   string     `json:"ap_last_name"`
 	ApActivated  *time.Time `json:"ap_activated_at"`
+	ApPhotoID    *string    `json:"ap_passport_photo_public_id"`
+	ApPhotoVer   *int64     `json:"ap_passport_photo_version"`
 }
 
 func (l *LoanRepository) guarantorQuery(filter LoanGuarantorRepositoryFilter, opts QueryOptions) (string, []any, error) {
@@ -57,11 +61,13 @@ func (l *LoanRepository) guarantorQuery(filter LoanGuarantorRepositoryFilter, op
 		"gm.slug AS gm_slug", "gm.user_id AS gm_user_id", "gm.first_name AS gm_first_name",
 		"gm.middle_name AS gm_middle_name", "gm.last_name AS gm_last_name", "gm.address AS gm_address",
 		"gm.activated_at AS gm_activated_at",
+		"gm.passport_photo_public_id AS gm_passport_photo_public_id", "gm.passport_photo_version AS gm_passport_photo_version",
 		"ln.member_id AS ln_member_id", "ln.requested_amount AS ln_requested_amount", "ln.purpose AS ln_purpose",
 		"ln.requested_duration_months AS ln_requested_duration_months", "ln.status AS ln_status",
 		"ln.created_at AS ln_created_at",
 		"ap.slug AS ap_slug", "ap.first_name AS ap_first_name", "ap.middle_name AS ap_middle_name",
 		"ap.last_name AS ap_last_name", "ap.activated_at AS ap_activated_at",
+		"ap.passport_photo_public_id AS ap_passport_photo_public_id", "ap.passport_photo_version AS ap_passport_photo_version",
 	).From("loan_guarantors lg").
 		Join("members gm ON gm.id = lg.member_id").
 		Join("loans ln ON ln.id = lg.loan_id").
@@ -101,6 +107,7 @@ func (l *LoanRepository) mapGuarantorFlat(flat *populatedLoanGuarantorFlat) *Pop
 			ID: flat.MemberID, UserID: flat.GmUserID, Slug: flat.GmSlug, FirstName: flat.GmFirstName,
 			MiddleName: ToNullString(flat.GmMiddleName), LastName: flat.GmLastName,
 			Address: ToNullString(flat.GmAddress), ActivatedAt: ToNullTime(flat.GmActivated),
+			PassportPhotoPublicID: ToNullString(flat.GmPhotoID), PassportPhotoVersion: ToNullInt64(flat.GmPhotoVer),
 		},
 		Loan: Loan{
 			ID: flat.LoanID, MemberID: flat.LnMemberID, RequestedAmount: flat.LnRequestedAmount, Purpose: flat.LnPurpose,
@@ -109,6 +116,7 @@ func (l *LoanRepository) mapGuarantorFlat(flat *populatedLoanGuarantorFlat) *Pop
 		Applicant: Member{
 			ID: flat.LnMemberID, Slug: flat.ApSlug, FirstName: flat.ApFirstName,
 			MiddleName: ToNullString(flat.ApMiddleName), LastName: flat.ApLastName, ActivatedAt: ToNullTime(flat.ApActivated),
+			PassportPhotoPublicID: ToNullString(flat.ApPhotoID), PassportPhotoVersion: ToNullInt64(flat.ApPhotoVer),
 		},
 	}
 }

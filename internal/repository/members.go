@@ -60,19 +60,21 @@ type PopulatedMember struct {
 }
 
 type populatedMemberFlat struct {
-	MbID             uuid.UUID  `json:"mb_id"`
-	MbUserID         uuid.UUID  `json:"mb_user_id"`
-	MbFirstName      string     `json:"mb_first_name"`
-	MbLastName       string     `json:"mb_last_name"`
-	MbSlug           string     `json:"mb_slug"`
-	MbPhone          *string    `json:"mb_phone"`
-	MbAddress        *string    `json:"mb_address"`
-	MbNextOfKinName  *string    `json:"mb_next_of_kin_name"`
-	MbNextOfKinPhone *string    `json:"mb_next_of_kin_phone"`
-	MbActivatedAt    *time.Time `json:"mb_activated_at"`
-	MbCreatedAt      time.Time  `json:"mb_created_at"`
-	MbUpdatedAt      *time.Time `json:"mb_updated_at"`
-	MbDeletedAt      *time.Time `json:"mb_deleted_at"`
+	MbID                    uuid.UUID  `json:"mb_id"`
+	MbUserID                uuid.UUID  `json:"mb_user_id"`
+	MbFirstName             string     `json:"mb_first_name"`
+	MbLastName              string     `json:"mb_last_name"`
+	MbSlug                  string     `json:"mb_slug"`
+	MbPassportPhotoPublicID *string    `json:"mb_passport_photo_public_id"`
+	MbPassportPhotoVersion  *int64     `json:"mb_passport_photo_version"`
+	MbPhone                 *string    `json:"mb_phone"`
+	MbAddress               *string    `json:"mb_address"`
+	MbNextOfKinName         *string    `json:"mb_next_of_kin_name"`
+	MbNextOfKinPhone        *string    `json:"mb_next_of_kin_phone"`
+	MbActivatedAt           *time.Time `json:"mb_activated_at"`
+	MbCreatedAt             time.Time  `json:"mb_created_at"`
+	MbUpdatedAt             *time.Time `json:"mb_updated_at"`
+	MbDeletedAt             *time.Time `json:"mb_deleted_at"`
 
 	UsID               uuid.UUID  `json:"us_id"`
 	UsEmail            string     `json:"us_email"`
@@ -177,6 +179,8 @@ func (mq *MemberRepository) populatedSelectColumns() []string {
 		"m.first_name AS mb_first_name",
 		"m.last_name AS mb_last_name",
 		"m.slug AS mb_slug",
+		"m.passport_photo_public_id AS mb_passport_photo_public_id",
+		"m.passport_photo_version AS mb_passport_photo_version",
 		"m.phone AS mb_phone",
 		"m.address AS mb_address",
 		"m.next_of_kin_name AS mb_next_of_kin_name",
@@ -278,19 +282,21 @@ func (mq *MemberRepository) ListPopulated(ctx context.Context, filter MemberRepo
 func (mq *MemberRepository) mapFlatToPopulated(flat *populatedMemberFlat) *PopulatedMember {
 	return &PopulatedMember{
 		Member: Member{
-			ID:             flat.MbID,
-			UserID:         flat.MbUserID,
-			FirstName:      flat.MbFirstName,
-			LastName:       flat.MbLastName,
-			Slug:           flat.MbSlug,
-			Phone:          ToNullString(flat.MbPhone),
-			Address:        ToNullString(flat.MbAddress),
-			NextOfKinName:  ToNullString(flat.MbNextOfKinName),
-			NextOfKinPhone: ToNullString(flat.MbNextOfKinPhone),
-			ActivatedAt:    ToNullTime(flat.MbActivatedAt),
-			CreatedAt:      flat.MbCreatedAt,
-			UpdatedAt:      ToNullTime(flat.MbUpdatedAt),
-			DeletedAt:      ToNullTime(flat.MbDeletedAt),
+			ID:                    flat.MbID,
+			UserID:                flat.MbUserID,
+			FirstName:             flat.MbFirstName,
+			LastName:              flat.MbLastName,
+			Slug:                  flat.MbSlug,
+			PassportPhotoPublicID: ToNullString(flat.MbPassportPhotoPublicID),
+			PassportPhotoVersion:  ToNullInt64(flat.MbPassportPhotoVersion),
+			Phone:                 ToNullString(flat.MbPhone),
+			Address:               ToNullString(flat.MbAddress),
+			NextOfKinName:         ToNullString(flat.MbNextOfKinName),
+			NextOfKinPhone:        ToNullString(flat.MbNextOfKinPhone),
+			ActivatedAt:           ToNullTime(flat.MbActivatedAt),
+			CreatedAt:             flat.MbCreatedAt,
+			UpdatedAt:             ToNullTime(flat.MbUpdatedAt),
+			DeletedAt:             ToNullTime(flat.MbDeletedAt),
 		},
 		User: &User{
 			ID:               flat.UsID,
@@ -492,7 +498,7 @@ func (mq *MemberRepository) MapCardToDTOModel(member *Member) *dto.MemberCard {
 	if member == nil {
 		return nil
 	}
-	return &dto.MemberCard{
+	card := &dto.MemberCard{
 		ID:         member.ID,
 		Slug:       member.Slug,
 		FirstName:  member.FirstName,
@@ -500,6 +506,12 @@ func (mq *MemberRepository) MapCardToDTOModel(member *Member) *dto.MemberCard {
 		LastName:   member.LastName,
 		IsActive:   member.ActivatedAt.Valid,
 	}
+	if member.PassportPhotoPublicID.Valid {
+		card.PassportPhoto = &dto.CloudinaryImage{
+			PublicID: member.PassportPhotoPublicID.String, Version: member.PassportPhotoVersion.Int64,
+		}
+	}
+	return card
 }
 
 // ListBeneficiaries returns a member's beneficiaries in form order.

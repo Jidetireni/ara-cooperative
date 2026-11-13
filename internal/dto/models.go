@@ -115,6 +115,8 @@ type MemberCard struct {
 	MiddleName string    `json:"middle_name,omitempty"`
 	LastName   string    `json:"last_name"`
 	IsActive   bool      `json:"is_active"`
+	// PassportPhoto doubles as the member's profile picture.
+	PassportPhoto *CloudinaryImage `json:"passport_photo,omitempty"`
 }
 
 type MemberInvitation struct {

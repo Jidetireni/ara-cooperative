@@ -79,6 +79,16 @@ func TestMemberApplicationPhotoAndAdminView(t *testing.T) {
 		t.Fatal("replacing the photo did not keep the ID and take the new version")
 	}
 
+	// The photo is the member's profile picture wherever they appear.
+	var listed struct {
+		Data struct{ Items []dto.MemberSummary }
+	}
+	w0 := sessionRequest(router, http.MethodGet, "/api/v1/members?search="+slug, "", admin, nil)
+	if w0.Code != http.StatusOK || json.Unmarshal(w0.Body.Bytes(), &listed) != nil || len(listed.Data.Items) != 1 ||
+		listed.Data.Items[0].PassportPhoto == nil || listed.Data.Items[0].PassportPhoto.Version != 200 {
+		t.Fatalf("admin member list missing the photo: %d %s", w0.Code, w0.Body.String())
+	}
+
 	var full struct{ Data dto.Member }
 	w := sessionRequest(router, http.MethodGet, "/api/v1/members/"+slug+"/profile", "", admin, nil)
 	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &full) != nil || len(full.Data.Beneficiaries) != 2 ||
@@ -111,6 +121,9 @@ func TestMemberApplicationPhotoAndAdminView(t *testing.T) {
 	}
 	found := func(cards []dto.MemberCard, slug string) bool {
 		return lo.ContainsBy(cards, func(c dto.MemberCard) bool { return c.Slug == slug })
+	}
+	if _, cards := search(other, slug); len(cards) != 1 || cards[0].PassportPhoto == nil || cards[0].PassportPhoto.PublicID != want {
+		t.Fatalf("member card missing the photo: %+v", cards)
 	}
 	if code, cards := search(member, otherSlug); code != http.StatusOK || !found(cards, otherSlug) {
 		t.Fatalf("search by number: %d %v", code, cards)

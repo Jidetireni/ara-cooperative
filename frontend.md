@@ -319,7 +319,7 @@ Show the form's declaration text next to the checkbox: *"I hereby apply as a mem
 
 The referrer ("Introduced by") is a member: let the member pick them with the member search below and send only their number. The server checks the number is a member other than the applicant (400 otherwise) and stores `introduced_by_name` from that member's record; any `introduced_by_name` sent is ignored. Send `""` to clear it.
 
-The server trims surrounding whitespace. Phone numbers (including beneficiary phones) need 7 to 15 digits with an optional leading `+`; spaces, dashes, and brackets are rejected. HTTP 200 returns the saved member object. Name, slug, ID, `is_active` and the passport photo are unchanged; this endpoint cannot edit the first or last name. The member can save again later to edit. After saving, `GET /api/v1/me` returns the updated `member` (without `beneficiaries`, `passport_photo` or `profile_complete`; read those from `/members/me`).
+The server trims surrounding whitespace. Phone numbers (including beneficiary phones) need 7 to 15 digits with an optional leading `+`; spaces, dashes, and brackets are rejected. HTTP 200 returns the saved member object. Name, slug, ID, `is_active` and the passport photo are unchanged; this endpoint cannot edit the first or last name. The member can save again later to edit. After saving, `GET /api/v1/me` returns the updated `member` (with `passport_photo`, without `beneficiaries` or `profile_complete`; read those from `/members/me`).
 
 | Status | Meaning |
 |---|---|
@@ -371,6 +371,8 @@ https://res.cloudinary.com/<cloud name>/image/upload/<transformations>/v<version
 ```
 
 Show a blurred, tiny placeholder first and swap to the sharp image once it loads, e.g. `e_blur:1000,q_1,w_40` for the placeholder and `c_fill,g_face,w_320,h_400,q_auto,f_auto` for the photo. A new upload keeps the same `public_id` and returns a new `version`, so the URL changes and caches never serve the old photo. Cloudinary delivery URLs are public to anyone holding them.
+
+The passport photo is also the member's **profile picture**. Every member object the API returns carries `passport_photo` when one is on record: `/me`, `/members/me`, the admin member list and profile, member cards and search results, guarantor entries, and the `member` embedded in transactions, payments, fines, shares and loans. Show it as a round avatar (for example `c_thumb,g_face,w_72,h_72,q_auto,f_auto` with the same blurred placeholder), falling back to initials.
 
 Errors: step 3 returns 400 when `public_id` is not this member's or the signature does not match (upload again); both steps return 503 when Cloudinary is not configured on the API (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`). Cloudinary's own errors (wrong format, expired signature) come back from Cloudinary in step 2.
 

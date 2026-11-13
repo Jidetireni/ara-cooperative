@@ -36,19 +36,21 @@ type PopulatedPayment struct {
 // aliased member columns.
 type populatedPaymentFlat struct {
 	Payment
-	MbID             uuid.UUID  `json:"mb_id"`
-	MbUserID         uuid.UUID  `json:"mb_user_id"`
-	MbFirstName      string     `json:"mb_first_name"`
-	MbLastName       string     `json:"mb_last_name"`
-	MbSlug           string     `json:"mb_slug"`
-	MbPhone          *string    `json:"mb_phone"`
-	MbAddress        *string    `json:"mb_address"`
-	MbNextOfKinName  *string    `json:"mb_next_of_kin_name"`
-	MbNextOfKinPhone *string    `json:"mb_next_of_kin_phone"`
-	MbActivatedAt    *time.Time `json:"mb_activated_at"`
-	MbCreatedAt      *time.Time `json:"mb_created_at"`
-	MbUpdatedAt      *time.Time `json:"mb_updated_at"`
-	MbDeletedAt      *time.Time `json:"mb_deleted_at"`
+	MbID                    uuid.UUID  `json:"mb_id"`
+	MbUserID                uuid.UUID  `json:"mb_user_id"`
+	MbFirstName             string     `json:"mb_first_name"`
+	MbLastName              string     `json:"mb_last_name"`
+	MbSlug                  string     `json:"mb_slug"`
+	MbPassportPhotoPublicID *string    `json:"mb_passport_photo_public_id"`
+	MbPassportPhotoVersion  *int64     `json:"mb_passport_photo_version"`
+	MbPhone                 *string    `json:"mb_phone"`
+	MbAddress               *string    `json:"mb_address"`
+	MbNextOfKinName         *string    `json:"mb_next_of_kin_name"`
+	MbNextOfKinPhone        *string    `json:"mb_next_of_kin_phone"`
+	MbActivatedAt           *time.Time `json:"mb_activated_at"`
+	MbCreatedAt             *time.Time `json:"mb_created_at"`
+	MbUpdatedAt             *time.Time `json:"mb_updated_at"`
+	MbDeletedAt             *time.Time `json:"mb_deleted_at"`
 }
 
 type PaymentRepositoryFilter struct {
@@ -95,6 +97,8 @@ func (p *PaymentRepository) populatedSelectColumns() []string {
 		"mb.first_name AS mb_first_name",
 		"mb.last_name AS mb_last_name",
 		"mb.slug AS mb_slug",
+		"mb.passport_photo_public_id AS mb_passport_photo_public_id",
+		"mb.passport_photo_version AS mb_passport_photo_version",
 		"mb.phone AS mb_phone",
 		"mb.address AS mb_address",
 		"mb.next_of_kin_name AS mb_next_of_kin_name",
@@ -220,19 +224,21 @@ func (p *PaymentRepository) mapFlatToPopulated(flat *populatedPaymentFlat) *Popu
 	return &PopulatedPayment{
 		Payment: flat.Payment,
 		Member: Member{
-			ID:             flat.MbID,
-			UserID:         flat.MbUserID,
-			FirstName:      flat.MbFirstName,
-			LastName:       flat.MbLastName,
-			Slug:           flat.MbSlug,
-			Phone:          ToNullString(flat.MbPhone),
-			Address:        ToNullString(flat.MbAddress),
-			NextOfKinName:  ToNullString(flat.MbNextOfKinName),
-			NextOfKinPhone: ToNullString(flat.MbNextOfKinPhone),
-			ActivatedAt:    ToNullTime(flat.MbActivatedAt),
-			CreatedAt:      lo.FromPtrOr(flat.MbCreatedAt, time.Time{}),
-			UpdatedAt:      ToNullTime(flat.MbUpdatedAt),
-			DeletedAt:      ToNullTime(flat.MbDeletedAt),
+			ID:                    flat.MbID,
+			UserID:                flat.MbUserID,
+			FirstName:             flat.MbFirstName,
+			LastName:              flat.MbLastName,
+			Slug:                  flat.MbSlug,
+			PassportPhotoPublicID: ToNullString(flat.MbPassportPhotoPublicID),
+			PassportPhotoVersion:  ToNullInt64(flat.MbPassportPhotoVersion),
+			Phone:                 ToNullString(flat.MbPhone),
+			Address:               ToNullString(flat.MbAddress),
+			NextOfKinName:         ToNullString(flat.MbNextOfKinName),
+			NextOfKinPhone:        ToNullString(flat.MbNextOfKinPhone),
+			ActivatedAt:           ToNullTime(flat.MbActivatedAt),
+			CreatedAt:             lo.FromPtrOr(flat.MbCreatedAt, time.Time{}),
+			UpdatedAt:             ToNullTime(flat.MbUpdatedAt),
+			DeletedAt:             ToNullTime(flat.MbDeletedAt),
 		},
 	}
 }
