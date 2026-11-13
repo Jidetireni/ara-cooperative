@@ -133,6 +133,7 @@ func (s *Server) router() {
 				r.Post("/", s.Handlers.CreateLoan)
 				r.Get("/me", s.Handlers.ListMyLoans)
 				r.Get("/guarantor-requests", s.Handlers.ListGuarantorRequests)
+				r.Get("/{id}/guarantee", s.Handlers.GetGuaranteeRequest)
 				r.Post("/{id}/guarantee", s.Handlers.RespondAsGuarantor)
 			})
 			r.Group(func(r chi.Router) {

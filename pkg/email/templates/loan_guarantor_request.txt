@@ -1,0 +1,13 @@
+Hello {{.FirstName}},
+
+{{.ApplicantName}} ({{.ApplicantNumber}}) has applied for a loan of {{.Amount}} and wants you to be a guarantor.
+
+Purpose: {{.Purpose}}
+Duration: {{.DurationMonths}} month{{if ne .DurationMonths 1}}s{{end}}
+
+As a guarantor you stand surety for this loan if the applicant does not repay it. Please review the request and approve or decline it:
+{{.ActionURL}}
+
+You received this because a member of Ara Cooperative named you as a guarantor on a loan application. You can respond only while the application is pending.
+
+Ara Cooperative

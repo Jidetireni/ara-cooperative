@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Jidetireni/ara-cooperative/internal/dto"
+	"github.com/Jidetireni/ara-cooperative/pkg/email"
 	"github.com/Jidetireni/ara-cooperative/pkg/paystack"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -479,7 +481,8 @@ func guarantorToken(t *testing.T, db *sqlx.DB, router http.Handler, slug string)
 func TestLoanGuarantorsAndByelawAdvisories(t *testing.T) {
 	t.Parallel()
 	db := sessionTestDB(t)
-	router, _ := paymentsTestRouter(t, db, testOwnerAccount)
+	sender := &invitationEmailSender{}
+	router, _ := paymentsTestRouterWithEmail(t, db, testOwnerAccount, sender)
 	seedSessionUser(t, db, []string{"member"}, true, true)
 	member := invitationAdminToken(t, router)
 	_, admin := loanActor(t, db, router, []string{"admin"}, false)
@@ -513,8 +516,33 @@ func TestLoanGuarantorsAndByelawAdvisories(t *testing.T) {
 		t.Fatalf("guarantor standing missing: %+v", checks.Data)
 	}
 
+	// Each guarantor is emailed a link to the page where they answer.
+	sender.mu.Lock()
+	sent := append([]email.SendEmailInput(nil), sender.messages...)
+	sender.mu.Unlock()
+	if len(sent) != 2 {
+		t.Fatalf("want 2 guarantor emails, got %d", len(sent))
+	}
+	wantLink := "http://localhost:3000/guarantees/" + loan.ID.String()
+	for i, message := range sent {
+		if message.To != fmt.Sprintf("ara90000%d@example.com", i+1) || !strings.Contains(message.Body, `href="`+wantLink+`"`) ||
+			!strings.Contains(message.Text, wantLink) || !strings.Contains(message.Text, "a loan of ₦10,000.00") ||
+			!strings.Contains(message.Text, "(ARA") || !strings.Contains(message.Subject, "wants you to guarantee a loan") {
+			t.Fatalf("guarantor email %d: %+v", i, message)
+		}
+	}
+
 	first := guarantorToken(t, db, router, "ara900001")
 	second := guarantorToken(t, db, router, "ara900002")
+	var single struct{ Data dto.GuarantorRequest }
+	if w := sessionRequest(router, http.MethodGet, path+"/guarantee", "", first, nil); w.Code != 200 ||
+		json.Unmarshal(w.Body.Bytes(), &single) != nil || single.Data.LoanID != loan.ID || single.Data.Position != 1 ||
+		single.Data.Status != "PENDING" || single.Data.RequestedAmount != loan.RequestedAmount {
+		t.Fatalf("guarantee request: %d %s", w.Code, w.Body.String())
+	}
+	if w := sessionRequest(router, http.MethodGet, path+"/guarantee", "", member, nil); w.Code != http.StatusNotFound {
+		t.Fatalf("applicant read a guarantee request: %d", w.Code)
+	}
 	var requests struct {
 		Data dto.ListResponse[dto.GuarantorRequest]
 	}
