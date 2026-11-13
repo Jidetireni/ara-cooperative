@@ -199,3 +199,62 @@ func (h *Handlers) RecordLoanDisbursement(w http.ResponseWriter, r *http.Request
 		h.logError(r, err)
 	}
 }
+
+// ListGuarantorRequests lists loan applications naming the current member as a guarantor.
+func (h *Handlers) ListGuarantorRequests(w http.ResponseWriter, r *http.Request) {
+	result, err := h.factory.Services.Loans.GuarantorRequests(r.Context(), h.getPaginationParams(r))
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	if err := h.writeJSON(w, http.StatusOK, result, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
+// RespondAsGuarantor accepts or declines a guarantee for a pending application.
+func (h *Handlers) RespondAsGuarantor(w http.ResponseWriter, r *http.Request) {
+	id, err := loanID(r)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	var input dto.LoanGuaranteeInput
+	if !h.decodeAndValidate(w, r, &input) {
+		return
+	}
+	result, err := h.factory.Services.Loans.RespondAsGuarantor(r.Context(), id, input)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	if err := h.writeJSON(w, http.StatusOK, result, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
+// ListBanks returns Nigerian banks for the loan payout picker.
+func (h *Handlers) ListBanks(w http.ResponseWriter, r *http.Request) {
+	banks, err := h.factory.Services.Banks.List(r.Context())
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	if err := h.writeJSON(w, http.StatusOK, banks, nil); err != nil {
+		h.logError(r, err)
+	}
+}
+
+// ResolveBankAccount returns the account holder's name from the bank
+// (?bank_code=&account_number=).
+func (h *Handlers) ResolveBankAccount(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	account, err := h.factory.Services.Banks.Resolve(r.Context(), query.Get("bank_code"), query.Get("account_number"))
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	if err := h.writeJSON(w, http.StatusOK, account, nil); err != nil {
+		h.logError(r, err)
+	}
+}

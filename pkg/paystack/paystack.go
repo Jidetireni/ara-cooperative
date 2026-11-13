@@ -128,9 +128,10 @@ type ChargeData struct {
 }
 
 type envelope[T any] struct {
-	Status  bool   `json:"status"`
-	Message string `json:"message"`
-	Data    T      `json:"data"`
+	Status  bool            `json:"status"`
+	Message string          `json:"message"`
+	Data    T               `json:"data"`
+	Meta    json.RawMessage `json:"meta,omitempty"`
 }
 
 func (c *Client) InitializeTransaction(ctx context.Context, input InitializeInput) (*InitializeResult, error) {
@@ -162,20 +163,26 @@ func (c *Client) ValidSignature(body []byte, signature string) bool {
 }
 
 func (c *Client) call(ctx context.Context, method, path string, body any, out any) error {
+	_, err := c.callWithMeta(ctx, method, path, body, out)
+	return err
+}
+
+// callWithMeta also returns Paystack's meta object (pagination cursors).
+func (c *Client) callWithMeta(ctx context.Context, method, path string, body any, out any) (json.RawMessage, error) {
 	if !c.Enabled() {
-		return ErrNotConfigured
+		return nil, ErrNotConfigured
 	}
 	var reader io.Reader
 	if body != nil {
 		payload, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("encode paystack request: %w", err)
+			return nil, fmt.Errorf("encode paystack request: %w", err)
 		}
 		reader = bytes.NewReader(payload)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.secretKey)
 	if body != nil {
@@ -184,23 +191,80 @@ func (c *Client) call(ctx context.Context, method, path string, body any, out an
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("paystack request %s: %w", path, err)
+		return nil, fmt.Errorf("paystack request %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 
 	var result envelope[json.RawMessage]
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBodySize)).Decode(&result); err != nil {
-		return &APIError{HTTPStatus: resp.StatusCode, Message: "unreadable response"}
+		return nil, &APIError{HTTPStatus: resp.StatusCode, Message: "unreadable response"}
 	}
 	if resp.StatusCode >= http.StatusBadRequest || !result.Status {
 		message := result.Message
 		if message == "" {
 			message = http.StatusText(resp.StatusCode)
 		}
-		return &APIError{HTTPStatus: resp.StatusCode, Message: message}
+		return nil, &APIError{HTTPStatus: resp.StatusCode, Message: message}
 	}
 	if err := json.Unmarshal(result.Data, out); err != nil {
-		return fmt.Errorf("decode paystack %s data: %w", path, err)
+		return nil, fmt.Errorf("decode paystack %s data: %w", path, err)
 	}
-	return nil
+	return result.Meta, nil
+}
+
+// Bank is a Nigerian bank Paystack can resolve accounts at.
+type Bank struct {
+	Name   string `json:"name"`
+	Slug   string `json:"slug"`
+	Code   string `json:"code"`
+	Active bool   `json:"active"`
+}
+
+// maxBankPages stops a misbehaving cursor from looping forever.
+const maxBankPages = 20
+
+// ListBanks returns every Nigerian bank, following Paystack's cursor.
+func (c *Client) ListBanks(ctx context.Context) ([]Bank, error) {
+	var banks []Bank
+	next := ""
+	for page := 0; page < maxBankPages; page++ {
+		query := url.Values{"country": {"nigeria"}, "currency": {"NGN"}, "perPage": {"100"}, "use_cursor": {"true"}}
+		if next != "" {
+			query.Set("next", next)
+		}
+		var batch []Bank
+		raw, err := c.callWithMeta(ctx, http.MethodGet, "/bank?"+query.Encode(), nil, &batch)
+		if err != nil {
+			return nil, err
+		}
+		banks = append(banks, batch...)
+		var meta struct {
+			Next *string `json:"next"`
+		}
+		if len(raw) > 0 {
+			_ = json.Unmarshal(raw, &meta)
+		}
+		if meta.Next == nil || *meta.Next == "" || *meta.Next == next {
+			return banks, nil
+		}
+		next = *meta.Next
+	}
+	return banks, nil
+}
+
+// ResolvedAccount is the account holder's name as the bank reports it.
+type ResolvedAccount struct {
+	AccountNumber string `json:"account_number"`
+	AccountName   string `json:"account_name"`
+}
+
+// ResolveAccount asks Paystack who owns accountNumber at bankCode. Paystack
+// answers 422 when the account does not exist.
+func (c *Client) ResolveAccount(ctx context.Context, accountNumber, bankCode string) (*ResolvedAccount, error) {
+	query := url.Values{"account_number": {accountNumber}, "bank_code": {bankCode}}
+	var out ResolvedAccount
+	if err := c.call(ctx, http.MethodGet, "/bank/resolve?"+query.Encode(), nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }

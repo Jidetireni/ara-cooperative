@@ -78,3 +78,31 @@ func TestResendSendError(t *testing.T) {
 		t.Fatal("error leaked the API key")
 	}
 }
+
+func TestDevelopmentSendsThroughResendWhenConfigured(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`{"id":"email_1"}`))
+	}))
+	t.Cleanup(server.Close)
+	input := &SendEmailInput{To: "member@example.com", Subject: "Invitation", Text: "Hi"}
+
+	withResend, err := New(&config.Config{IsDev: true, Email: config.EmailConfig{
+		ResendAPIKey: "re_test", ResendBaseURL: server.URL + "/", FromAddress: "no-reply@mail.aracoop.xyz",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := withResend.Send(context.Background(), input); err != nil || calls != 1 {
+		t.Fatalf("development with Resend did not send: calls=%d err=%v", calls, err)
+	}
+
+	printOnly, err := New(&config.Config{IsDev: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := printOnly.Send(context.Background(), input); err != nil || calls != 1 {
+		t.Fatalf("development without Resend should only print: calls=%d err=%v", calls, err)
+	}
+}

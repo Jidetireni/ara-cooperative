@@ -45,8 +45,11 @@ type MemberRepositoryFilter struct {
 	Phone    *string
 	IsActive *bool
 	// Search matches name, member number, or account email (case-insensitive).
-	Search    *string
-	ForUpdate bool
+	Search *string
+	// NameOrNumber matches name or member number only, for member-facing
+	// lookups that must not reveal email addresses.
+	NameOrNumber *string
+	ForUpdate    bool
 }
 
 // PopulatedMember carries the member's account so admins can see the email
@@ -111,6 +114,18 @@ func (mq *MemberRepository) applyFilter(builder sq.SelectBuilder, filter MemberR
 				sq.ILike{"m.slug": pattern},
 				sq.Expr("(m.first_name || ' ' || m.last_name) ILIKE ?", pattern),
 				sq.Expr("EXISTS (SELECT 1 FROM users su WHERE su.id = m.user_id AND su.email ILIKE ?)", pattern),
+			})
+		}
+	}
+	if filter.NameOrNumber != nil {
+		if term := strings.TrimSpace(*filter.NameOrNumber); term != "" {
+			pattern := "%" + likeEscaper.Replace(term) + "%"
+			builder = builder.Where(sq.Or{
+				sq.ILike{"m.first_name": pattern},
+				sq.ILike{"m.last_name": pattern},
+				sq.ILike{"m.middle_name": pattern},
+				sq.ILike{"m.slug": pattern},
+				sq.Expr("(m.first_name || ' ' || m.last_name) ILIKE ?", pattern),
 			})
 		}
 	}
@@ -350,6 +365,24 @@ func (mq *MemberRepository) Update(ctx context.Context, member *Member, tx *sqlx
 		Set("address", member.Address).
 		Set("next_of_kin_name", member.NextOfKinName).
 		Set("next_of_kin_phone", member.NextOfKinPhone).
+		Set("title", member.Title).
+		Set("middle_name", member.MiddleName).
+		Set("alternate_phone", member.AlternatePhone).
+		Set("place_of_birth", member.PlaceOfBirth).
+		Set("nationality", member.Nationality).
+		Set("state_of_origin", member.StateOfOrigin).
+		Set("home_town", member.HomeTown).
+		Set("lga", member.Lga).
+		Set("next_of_kin_address", member.NextOfKinAddress).
+		Set("workplace_company", member.WorkplaceCompany).
+		Set("workplace_address", member.WorkplaceAddress).
+		Set("workplace_since", member.WorkplaceSince).
+		Set("workplace_position", member.WorkplacePosition).
+		Set("workplace_responsibilities", member.WorkplaceResponsibilities).
+		Set("monthly_contribution_pledge", member.MonthlyContributionPledge).
+		Set("introduced_by_name", member.IntroducedByName).
+		Set("introduced_by_number", member.IntroducedByNumber).
+		Set("declaration_accepted_at", member.DeclarationAcceptedAt).
 		Set("activated_at", member.ActivatedAt).
 		Set("updated_at", time.Now()).
 		Where(sq.Eq{"id": member.ID}).
@@ -407,17 +440,135 @@ func (mq *MemberRepository) MapRepositoryToDTOModel(member *Member) *dto.Member 
 	if member.ActivatedAt.Valid {
 		isActive = true
 	}
-	return &dto.Member{
-		ID:             member.ID,
-		FirstName:      member.FirstName,
-		LastName:       member.LastName,
-		Phone:          member.Phone.String,
-		Slug:           member.Slug,
-		Address:        member.Address.String,
-		NextOfKinName:  member.NextOfKinName.String,
-		NextOfKinPhone: member.NextOfKinPhone.String,
-		IsActive:       isActive,
+	result := &dto.Member{
+		ID:                 member.ID,
+		FirstName:          member.FirstName,
+		LastName:           member.LastName,
+		Phone:              member.Phone.String,
+		Slug:               member.Slug,
+		Address:            member.Address.String,
+		NextOfKinName:      member.NextOfKinName.String,
+		NextOfKinPhone:     member.NextOfKinPhone.String,
+		IsActive:           isActive,
+		Title:              member.Title.String,
+		MiddleName:         member.MiddleName.String,
+		AlternatePhone:     member.AlternatePhone.String,
+		PlaceOfBirth:       member.PlaceOfBirth.String,
+		Nationality:        member.Nationality.String,
+		StateOfOrigin:      member.StateOfOrigin.String,
+		HomeTown:           member.HomeTown.String,
+		LGA:                member.Lga.String,
+		NextOfKinAddress:   member.NextOfKinAddress.String,
+		IntroducedByName:   member.IntroducedByName.String,
+		IntroducedByNumber: member.IntroducedByNumber.String,
 	}
+	if member.WorkplaceCompany.Valid {
+		result.Workplace = &dto.MemberWorkplace{
+			Company:          member.WorkplaceCompany.String,
+			Address:          member.WorkplaceAddress.String,
+			Position:         member.WorkplacePosition.String,
+			Responsibilities: member.WorkplaceResponsibilities.String,
+		}
+		if member.WorkplaceSince.Valid {
+			result.Workplace.Since = member.WorkplaceSince.Time.Format(time.DateOnly)
+		}
+	}
+	if member.MonthlyContributionPledge.Valid {
+		result.MonthlyContributionPledge = &member.MonthlyContributionPledge.Int64
+	}
+	if member.DeclarationAcceptedAt.Valid {
+		result.DeclarationAcceptedAt = &member.DeclarationAcceptedAt.Time
+	}
+	if member.PassportPhotoPublicID.Valid {
+		result.PassportPhoto = &dto.CloudinaryImage{
+			PublicID: member.PassportPhotoPublicID.String, Version: member.PassportPhotoVersion.Int64,
+		}
+	}
+	return result
+}
+
+// MapCardToDTOModel returns the directory view of a member.
+func (mq *MemberRepository) MapCardToDTOModel(member *Member) *dto.MemberCard {
+	if member == nil {
+		return nil
+	}
+	return &dto.MemberCard{
+		ID:         member.ID,
+		Slug:       member.Slug,
+		FirstName:  member.FirstName,
+		MiddleName: member.MiddleName.String,
+		LastName:   member.LastName,
+		IsActive:   member.ActivatedAt.Valid,
+	}
+}
+
+// ListBeneficiaries returns a member's beneficiaries in form order.
+func (mq *MemberRepository) ListBeneficiaries(ctx context.Context, memberID uuid.UUID, tx *sqlx.Tx) ([]MemberBeneficiary, error) {
+	query, args, err := mq.psql.Select("*").From("member_beneficiaries").
+		Where(sq.Eq{"member_id": memberID}).OrderBy("position").ToSql()
+	if err != nil {
+		return nil, err
+	}
+	beneficiaries := []MemberBeneficiary{}
+	if tx != nil {
+		err = tx.SelectContext(ctx, &beneficiaries, query, args...)
+	} else {
+		err = mq.db.SelectContext(ctx, &beneficiaries, query, args...)
+	}
+	return beneficiaries, err
+}
+
+// ReplaceBeneficiaries swaps a member's beneficiary list inside the caller's transaction.
+func (mq *MemberRepository) ReplaceBeneficiaries(
+	ctx context.Context, memberID uuid.UUID, beneficiaries []MemberBeneficiary, tx *sqlx.Tx,
+) ([]MemberBeneficiary, error) {
+	if tx == nil {
+		return nil, errors.New("replacing beneficiaries requires a transaction")
+	}
+	query, args, err := mq.psql.Delete("member_beneficiaries").Where(sq.Eq{"member_id": memberID}).ToSql()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return nil, err
+	}
+	if len(beneficiaries) == 0 {
+		return []MemberBeneficiary{}, nil
+	}
+	insert := mq.psql.Insert("member_beneficiaries").
+		Columns("member_id", "position", "name", "relationship", "address", "phone")
+	for i, b := range beneficiaries {
+		insert = insert.Values(memberID, i+1, b.Name, b.Relationship, b.Address, b.Phone)
+	}
+	query, args, err = insert.Suffix("RETURNING *").ToSql()
+	if err != nil {
+		return nil, err
+	}
+	saved := []MemberBeneficiary{}
+	if err := tx.SelectContext(ctx, &saved, query, args...); err != nil {
+		return nil, err
+	}
+	return saved, nil
+}
+
+// SetPassportPhoto records the Cloudinary public ID and version of the
+// member's passport photograph.
+func (mq *MemberRepository) SetPassportPhoto(ctx context.Context, memberID uuid.UUID, publicID string, version int64) (*Member, error) {
+	query, args, err := mq.psql.Update("members").
+		Set("passport_photo_public_id", publicID).
+		Set("passport_photo_version", version).
+		Set("updated_at", time.Now()).
+		Where(sq.Eq{"id": memberID}).
+		Where(sq.Eq{"deleted_at": nil}).
+		Suffix("RETURNING *").ToSql()
+	if err != nil {
+		return nil, err
+	}
+	var member Member
+	if err := mq.db.GetContext(ctx, &member, query, args...); err != nil {
+		return nil, err
+	}
+	return &member, nil
 }
 
 func (mq *MemberRepository) MapPopulatedToDTOModel(populated *PopulatedMember) *dto.MemberSummary {

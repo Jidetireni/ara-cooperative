@@ -12,6 +12,7 @@ This file tracks the frontend contract as backend work lands. Use `/api/v1` as t
 | 4. Paystack checkout and split settlement | Implemented and tested | Quote, checkout (`POST /payments` returns `authorization_url`), status reads, signed webhook verification, and owner subaccount settlement (`subaccount` + `transaction_charge`). Amounts are kobo. |
 | 5. Campaigns | Implemented | Creation/editing, dates, participation and amount rules, Paystack contributions, totals/history, closing/cancellation, resolution notes, and a manual refunded flag. |
 | 6. Loans | Implemented | Applications, admin history/review, configurable advisory thresholds, approval/rejection, and recording external disbursements. Repayments remain deferred. |
+| 7. Paper-form parity | Implemented and tested | Member profile and loan application follow the paper membership and loan forms: personal and origin details, workplace, beneficiaries, pledge, referrer, declaration, Cloudinary passport photo, admin profile view, member cards and member search (referrer and guarantor pickers), loan repayment proposal, payout account checked with Paystack's bank list and account resolve, two guarantors with accept/decline, and bye-law advisory flags. Apply `00016`, `00017` and `00018`. |
 
 Dividends, savings withdrawals, and the entire loan-repayment feature are outside this version.
 
@@ -218,7 +219,7 @@ Owner creation and transfer are not public HTTP operations. Ordinary admin permi
 
 ### Email delivery setup
 
-Outside `ENV=development`, the API sends email through Resend's HTTPS API when `RESEND_API_KEY` is set, and over SMTP otherwise. Railway's Free, Trial and Hobby plans block outbound SMTP, so staging must use the API: set `RESEND_API_KEY` (a sending-access key) and `EMAIL_FROM=Ara Cooperative <no-reply@mail.aracoop.xyz>` (required with the key, because the sender must be on the verified domain `mail.aracoop.xyz`). `EMAIL_PASSWORD` and the `SMTP_*` settings are then unused. The SMTP path remains for hosts that allow it: `SMTP_HOST`, `SMTP_PORT` (587 STARTTLS or 465 TLS), `SMTP_USERNAME`, `EMAIL_FROM`, and `EMAIL_PASSWORD`; defaults keep the original Gmail account. Keep keys in the host's secret settings, never in the repository. A failed send is logged as `member invitation delivery failed` with Resend's error message, and the invitation response returns `"delivery": "failed"`. Development still prints emails and links to the backend terminal.
+The API sends email through Resend's HTTPS API when `RESEND_API_KEY` is set, and over SMTP otherwise (SMTP is never used in `ENV=development`). Railway's Free, Trial and Hobby plans block outbound SMTP, so staging must use the API: set `RESEND_API_KEY` (a sending-access key) and `EMAIL_FROM=Ara Cooperative <no-reply@mail.aracoop.xyz>` (required with the key, because the sender must be on the verified domain `mail.aracoop.xyz`). `EMAIL_PASSWORD` and the `SMTP_*` settings are then unused. The SMTP path remains for hosts that allow it: `SMTP_HOST`, `SMTP_PORT` (587 STARTTLS or 465 TLS), `SMTP_USERNAME`, `EMAIL_FROM`, and `EMAIL_PASSWORD`; defaults keep the original Gmail account. Keep keys in the host's secret settings, never in the repository. A failed send is logged as `member invitation delivery failed` with Resend's error message, and the invitation response returns `"delivery": "failed"`. Development always prints emails and links to the backend terminal, and also delivers them when `RESEND_API_KEY` is set.
 
 Emails are rendered from templates compiled into the binary (`pkg/email/templates`): a plain shared layout plus an HTML and plain-text version of each message. The member invitation is the only email today; its button is the first link and carries the set-password link (token in the URL fragment) or the login page. A matching "Member invitation" template (alias `member-invitation`) is published in Resend for dashboard use; the API renders its own copy, so edits in Resend don't change API emails. No API contract changed.
 
@@ -263,7 +264,7 @@ Success returns HTTP 201:
 }
 ```
 
-The response contains no setup token. `delivery: "sent"` means the email transport accepted the message; in development it means the message was printed in API logs. If `delivery` is `"failed"`, the membership still exists: show a delivery warning and let the admin retry the same request. Retrying a pending invitation preserves its member ID and profile, renews the setup link, and invalidates the old link. An already active membership returns 409. Concurrent requests creating the same new account may also return 409; retry that invitation.
+The response contains no setup token. `delivery: "sent"` means the email transport accepted the message; in development without `RESEND_API_KEY` it means the message was only printed in API logs. If `delivery` is `"failed"`, the membership still exists: show a delivery warning and let the admin retry the same request. Retrying a pending invitation preserves its member ID and profile, renews the setup link, and invalidates the old link. An already active membership returns 409. Concurrent requests creating the same new account may also return 409; retry that invitation.
 
 Existing accounts keep their password and current roles, gaining a separate pending member profile. Their email links to login, `requires_password_setup` is false, and `expires_at` is omitted. Ordinary members receive 403 when inviting; missing/invalid authentication receives 401. Invalid input receives 400.
 
@@ -277,30 +278,127 @@ Submit the email, token, and chosen password to the existing `POST /api/v1/set-p
 
 ### Member completes their profile
 
-A member reads and saves their own profile. Both endpoints need a bearer token and the `member` role, and both work before activation. Saving a profile never activates membership or unlocks financial routes.
+The profile follows the paper **membership application form**, which is the source of truth. A member reads and saves their own profile. Both endpoints need a bearer token and the `member` role, and both work before activation. Saving a profile never activates membership or unlocks financial routes.
 
-`GET /api/v1/members/me` returns the member object (HTTP 200). An invited profile has empty `phone`, `address`, `next_of_kin_name`, and `next_of_kin_phone` until the member saves it. Treat the profile as complete when all four are non-empty.
+`GET /api/v1/members/me` returns the full member object (HTTP 200). An invited profile has only the name, slug and ID until the member saves it. Use `profile_complete` to decide whether onboarding is finished: it is `true` once every required field, at least one beneficiary, the passport photo and the declaration are on record. Optional fields are omitted from the JSON when empty.
 
-`PUT /api/v1/members/me` replaces all four contact fields. Every field is required:
+`PUT /api/v1/members/me` replaces the whole form. Required fields are marked; the rest may be blank or omitted:
 
-```json
+```jsonc
 {
-  "phone": "08012345678",
-  "address": "12 Example Road, Lagos",
-  "next_of_kin_name": "Tola Member",
-  "next_of_kin_phone": "+2348098765432"
+  "title": "Mrs",                                  // required: Mr, Mrs, Miss, Ms or another title
+  "middle_name": "Adunni",
+  "phone": "08012345678",                          // required
+  "alternate_phone": "08011112222",                // the form's "Phone Number(s)"
+  "address": "12 Example Road, Lagos",             // required: contact address
+  "place_of_birth": "Ado Ekiti",                   // required
+  "nationality": "Nigerian",                       // required
+  "state_of_origin": "Ekiti",                      // required
+  "home_town": "Ara",                              // required: home town/village of origin
+  "lga": "Ado",                                    // required
+  "next_of_kin_name": "Tola Member",               // required
+  "next_of_kin_address": "3 Kin Close, Ibadan",    // required
+  "next_of_kin_phone": "+2348098765432",           // required
+  "workplace": {                                   // optional; omit for none
+    "company": "Example Ltd",                      // required inside workplace
+    "address": "1 Office Way, Lagos",              // required inside workplace
+    "since": "2020-01-15",                         // YYYY-MM-DD, not in the future
+    "position": "Accountant",
+    "responsibilities": "Payroll"
+  },
+  "beneficiaries": [                               // required: 1 to 4, in form order
+    {"name": "Kemi Member", "relationship": "Daughter", "address": "12 Example Road, Lagos", "phone": "08033334444"}
+  ],
+  "monthly_contribution_pledge": 500000,           // kobo; information only, nothing enforces it
+  "introduced_by_number": "ara000009",             // optional; a member picked from the member search
+  "declaration_accepted": true                     // required: must be true
 }
 ```
 
-The server trims surrounding whitespace. Phone numbers need 7 to 15 digits with an optional leading `+`; spaces, dashes, and brackets are rejected. HTTP 200 returns the saved member object in the usual envelope. Name, slug, ID, and `is_active` are unchanged; this endpoint cannot edit the name. The member can save again later to edit a completed profile. After saving, `GET /api/v1/me` returns the updated `member`.
+Show the form's declaration text next to the checkbox: *"I hereby apply as a member of ARA AWARAWA MULTIPURPOSE COOPERATIVE SOCIETY. If admitted, I undertake to accept and abide by the code of conduct/rules and bye-laws of the society and shall endeavour to advance the course of the organization. I certify that the information given on this form is true and correct."* The server records `declaration_accepted_at` on the first save and keeps it.
+
+The referrer ("Introduced by") is a member: let the member pick them with the member search below and send only their number. The server checks the number is a member other than the applicant (400 otherwise) and stores `introduced_by_name` from that member's record; any `introduced_by_name` sent is ignored. Send `""` to clear it.
+
+The server trims surrounding whitespace. Phone numbers (including beneficiary phones) need 7 to 15 digits with an optional leading `+`; spaces, dashes, and brackets are rejected. HTTP 200 returns the saved member object. Name, slug, ID, `is_active` and the passport photo are unchanged; this endpoint cannot edit the first or last name. The member can save again later to edit. After saving, `GET /api/v1/me` returns the updated `member` (without `beneficiaries`, `passport_photo` or `profile_complete`; read those from `/members/me`).
 
 | Status | Meaning |
 |---|---|
-| 400 | Missing, blank, too long, or invalid fields. Validation failures list `errors[]` with Go field names (`Phone`, `Address`, `NextOfKinName`, `NextOfKinPhone`); format failures have only a message. |
+| 400 | Missing, blank, too long, or invalid fields, a missing beneficiary, more than four, or the declaration not accepted. Validation failures list `errors[]` with Go field names (`Title`, `LGA`, `Beneficiaries`, ...); other failures have only a message. |
 | 401 | Missing or invalid access token. |
 | 403 | The account has no member role, e.g. an admin or owner without personal membership. |
 | 404 | The member role has no member profile, or the profile was deleted. |
 | 409 | `phone number is already used by another member`. |
+
+### Passport photo (Cloudinary)
+
+The form asks for a passport photograph. The browser uploads the file straight to Cloudinary; the API only names the image and signs the upload, so the API secret never reaches the browser and a member can only write their own image.
+
+1. `POST /api/v1/members/me/passport-photo/upload` (no body) returns the signed upload, valid for one hour:
+
+```json
+{
+  "data": {
+    "cloud_name": "ara-coop",
+    "api_key": "123456789012345",
+    "timestamp": 1731490000,
+    "public_id": "ara/production/members/2222.../passport",
+    "overwrite": true,
+    "invalidate": true,
+    "allowed_formats": "jpg,png",
+    "signature": "bfd09f95f331f558cbd1320e67aa8d488770583e"
+  }
+}
+```
+
+2. Send a `multipart/form-data` `POST` to `https://api.cloudinary.com/v1_1/<cloud_name>/image/upload` with `file` plus every field above except `cloud_name`, sent exactly as returned (`overwrite` and `invalidate` as `true`). Changing any field makes Cloudinary reject the upload. Check the size (at most 1 MB) and type (JPEG or PNG) in the browser before sending.
+
+3. `PUT /api/v1/members/me/passport-photo` with `public_id`, `version` and `signature` copied from Cloudinary's JSON response:
+
+```json
+{"public_id": "ara/production/members/2222.../passport", "version": 1731490000, "signature": "<signature from Cloudinary's response>"}
+```
+
+The API checks Cloudinary's response signature (it signs `public_id` and `version` with the API secret), then returns the full member object, now with:
+
+```json
+"passport_photo": {"public_id": "ara/production/members/2222.../passport", "version": 1731490000}
+```
+
+Build the image URL on the frontend from `VITE_CLOUDINARY_CLOUD_NAME` and these values:
+
+```
+https://res.cloudinary.com/<cloud name>/image/upload/<transformations>/v<version>/<public_id>
+```
+
+Show a blurred, tiny placeholder first and swap to the sharp image once it loads, e.g. `e_blur:1000,q_1,w_40` for the placeholder and `c_fill,g_face,w_320,h_400,q_auto,f_auto` for the photo. A new upload keeps the same `public_id` and returns a new `version`, so the URL changes and caches never serve the old photo. Cloudinary delivery URLs are public to anyone holding them.
+
+Errors: step 3 returns 400 when `public_id` is not this member's or the signature does not match (upload again); both steps return 503 when Cloudinary is not configured on the API (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`). Cloudinary's own errors (wrong format, expired signature) come back from Cloudinary in step 2.
+
+The membership fee checkout (`REGISTRATION_FEE`) returns 409 until the form has been saved with the declaration. The passport photo is not required for paying, so a storage outage cannot block joining; show `profile_complete` to prompt for it.
+
+### Admin views a member's application
+
+`GET /api/v1/members/{slug}/profile` returns the same full member object for admins and the owner, including beneficiaries, workplace, declaration time and `passport_photo`. Members receive 403; an unknown number returns 404.
+
+### Member cards
+
+`GET /api/v1/members/{slug}` (active members) returns only a directory card, for example to confirm a guarantor's name before applying for a loan:
+
+```json
+{"id": "...", "slug": "ara000002", "first_name": "Tola", "middle_name": "Ade", "last_name": "Member", "is_active": true}
+```
+
+Contact and application details are never included.
+
+### Member search (referrer and guarantor pickers)
+
+`GET /api/v1/members/search?q=ade` returns up to 10 directory cards for members whose first, middle or last name, full name, or membership number contains `q` (case-insensitive). Pending members (membership fee not yet confirmed) are included with `is_active: false`; mark them, since a pending guarantor raises the `GUARANTOR_NOT_ACTIVE` flag at review. Email addresses are never matched. `q` must be 2 to 100 characters (400 otherwise). Any signed-in member may search, including a pending member choosing who introduced them.
+
+```json
+{"data": [{"id": "...", "slug": "ara000002", "first_name": "Tola", "middle_name": "Ade", "last_name": "Member", "is_active": true}]}
+```
+
+Search as the member types (debounce about 250 ms), list name and number, and keep the chosen card. Leave out the applicant and anyone already picked.
 
 ### Admin lists members
 
@@ -614,17 +712,61 @@ Keep `GET /api/v1/shares/unit-price` and `GET /api/v1/shares/quotes?amount=...` 
 
 ### Member journey
 
-Active members apply with `POST /api/v1/loans`:
+The application follows the paper **loan application form**. Personal details (name, phone, email, next of kin and their address) and membership details (membership number, savings, shares) come from the member's profile and records, so the client shows them read-only. Active members apply with `POST /api/v1/loans`:
 
 ```json
-{"amount":1000000,"purpose":"School fees","duration_months":12}
+{
+  "amount": 1000000,
+  "purpose": "School fees",
+  "duration_months": 12,
+  "repayment_start_date": "2026-12-01",
+  "repayment_duration_months": 10,
+  "monthly_repayment_amount": 100000,
+  "disbursement_bank_code": "011",
+  "disbursement_account_number": "2043541845",
+  "guarantor_member_numbers": ["ara000002", "ara000003"],
+  "declaration_accepted": true
+}
 ```
 
-Amounts are positive whole kobo. Duration is a positive whole number of months. Purpose is required, trimmed, and limited to 2000 characters. The backend assigns the signed-in member; the client cannot choose another member. HTTP 201 returns a `PENDING` loan. Admin/owner access without an active member profile cannot apply for a personal loan.
+All fields are required. Amounts are positive whole kobo; show "Amount in words" on the client from `amount`. Durations are positive whole months. `repayment_start_date` is `YYYY-MM-DD`, today or later. `disbursement_bank_code` comes from the bank list below and the account number is 10 digits (NUBAN). The server resolves the account with Paystack and stores the bank's name for the account holder as `disbursement_account_name`, with `disbursement_bank_name` from the bank list; the client does not send either. An account the bank cannot confirm, or an unknown or inactive bank, returns 400; Paystack being unreachable returns 502. `guarantor_member_numbers` names exactly two different members by membership number, neither of them the applicant; pick them with the member search. `declaration_accepted` must be `true`; show the form's text: *"I confirm that the information above is true and correct to the best of my knowledge. I am aware that any false information may lead to the denial of the approval of this loan. I authorize ARA Cooperative Society to conduct background and credit investigation to obtain necessary information as may be required for my loan application."*
+
+The repayment proposal is information for the committee only. No repayment schedule is created. The backend assigns the signed-in member. HTTP 201 returns a `PENDING` loan with the new fields, `declaration_accepted_at`, and `guarantors`:
+
+```json
+"guarantors": [
+  {"position": 1, "member": {"id": "...", "slug": "ara000002", "first_name": "Tola", "last_name": "Member", "is_active": true},
+   "address": "5 Surety Street", "status": "PENDING"}
+]
+```
+
+A guarantor `status` is `PENDING`, `ACCEPTED` or `DECLINED`, with `responded_at` once answered. Applications made before this change have no guarantors and omit the new fields.
 
 `GET /api/v1/loans/me` lists the member's own applications. Optional `status` is `PENDING`, `APPROVED`, `REJECTED`, or `ACTIVE`. `GET /api/v1/loans/{id}` returns a loan to its member or an admin; another member receives 404. Pending members receive 403. Use `limit`, `cursor`, and `sort=created_at:asc|created_at:desc`; default order is newest first.
 
-Show requested amount, purpose, requested duration, status, and creation date. Once reviewed, show approved terms or rejection reason. Approval does not mean the money has been sent. No separate member acceptance is required before external disbursement.
+Show requested amount, purpose, requested duration, the repayment proposal, bank details, guarantors and their responses, status, and creation date. Once reviewed, show approved terms or rejection reason. Approval does not mean the money has been sent. No separate member acceptance is required before external disbursement.
+
+### Payout bank and account check (Paystack)
+
+`GET /api/v1/banks` (any signed-in member) returns active Nigerian banks from Paystack, sorted by name. The server caches the list for a day:
+
+```json
+{"data": [{"name": "Access Bank", "code": "044"}, {"name": "First Bank of Nigeria", "code": "011"}]}
+```
+
+Show it as a searchable picker. Once the member has chosen a bank and typed 10 digits, call `GET /api/v1/banks/resolve?bank_code=011&account_number=2043541845`:
+
+```json
+{"data": {"bank_code": "011", "bank_name": "First Bank of Nigeria", "account_number": "2043541845", "account_name": "ADA MEMBER"}}
+```
+
+Show `account_name` so the member can confirm it is their account, and only allow sending the application once it resolves. 400 means the bank could not confirm the account (or the bank or number is invalid); 502 means Paystack could not be reached; 503 means `PAYSTACK_SECRET_KEY` is not set. Loan responses include `disbursement_bank_code`.
+
+### Guarantors accept or decline
+
+Guarantors confirm in the app in place of the form's signature. `GET /api/v1/loans/guarantor-requests` (active members) lists applications that name the signed-in member, newest first, with the applicant's card, amount, purpose, duration, loan status, this guarantor's `status` and `responded_at`. Show the form's guarantor note: the guarantor vouches for the applicant and bears responsibility in case of default, must be a member with enough savings and shares to cover the loan, and must not be on loan or indebted to the cooperative.
+
+`POST /api/v1/loans/{id}/guarantee` with `{"decision":"ACCEPT"}` or `{"decision":"DECLINE"}` records the answer and returns the updated request. A guarantor may change their answer while the application is `PENDING`; after review it returns 409. A member not named on the application receives 404.
 
 ### Admin review and advisory settings
 
@@ -638,7 +780,18 @@ Show requested amount, purpose, requested duration, status, and creation date. O
 
 Defaults are zero until configured. Savings are kobo; share units are a decimal string with at most four decimal places, allowing fractional shares. The response includes the latest update author/time. Zero disables that minimum threshold.
 
-`GET /api/v1/loans/{id}/eligibility` returns current confirmed savings deposits, confirmed share units, configured minimums, other application counts, approved loans awaiting disbursement, active loans, `checked_at`, and a `flags` array. Flags are advisory: `INSUFFICIENT_SAVINGS`, `INSUFFICIENT_SHARES`, `OTHER_PENDING_APPLICATIONS`, `APPROVED_UNDISBURSED_LOANS`, and `ACTIVE_LOANS`. Pending/unverified payments do not count toward savings or shares. Active loan history does not establish a repayment balance or overdue status in this version.
+`GET /api/v1/loans/{id}/eligibility` returns current confirmed savings deposits, confirmed share units, configured minimums, other application counts, approved loans awaiting disbursement, active loans, `checked_at`, and a `flags` array. It also returns `membership_activated_at` and `guarantors`, each with `member_id`, `slug`, `name`, `status`, `is_active`, confirmed `savings`, `share_units`, `open_loans` (approved or active) and `unpaid_fines`, which fills the form's "Total Shares and Savings" lines. Flags are advisory: `INSUFFICIENT_SAVINGS`, `INSUFFICIENT_SHARES`, `OTHER_PENDING_APPLICATIONS`, `APPROVED_UNDISBURSED_LOANS`, and `ACTIVE_LOANS`, plus the bye-law checks:
+
+| Flag | Bye-law |
+|---|---|
+| `MEMBERSHIP_UNDER_SIX_MONTHS` | 65: applied within 6 months of activation. |
+| `BELOW_BYELAW_SHARE_MINIMUM` | 46: fewer than 50 share units. |
+| `REPAYMENT_OVER_TWELVE_MONTHS` | 71: requested (or approved) duration or repayment duration over 12 months. |
+| `GUARANTORS_MISSING` | 68: fewer than two guarantors (older applications). |
+| `GUARANTOR_NOT_ACCEPTED` | A guarantor has not accepted. |
+| `GUARANTOR_NOT_ACTIVE` | 68: a guarantor is not an active member. |
+| `GUARANTOR_ON_LOAN` | Form: a guarantor has an approved or active loan. |
+| `GUARANTOR_INDEBTED` | Form: a guarantor has unpaid fines. | Pending/unverified payments do not count toward savings or shares. Active loan history does not establish a repayment balance or overdue status in this version.
 
 Approve with `POST /api/v1/loans/{id}/approve`:
 
@@ -647,14 +800,14 @@ Approve with `POST /api/v1/loans/{id}/approve`:
   "amount":900000,
   "duration_months":6,
   "interest_method":"FLAT",
-  "interest_rate_percent":"5.2500",
+  "interest_rate_percent":"1.2500",
   "interest_period":"MONTHLY",
   "reason":"Approved final terms",
   "override_reason":"Committee approved despite low savings"
 }
 ```
 
-Interest method is `FLAT` or `REDUCING_BALANCE`; period is `MONTHLY` or `ANNUAL`. Rate is a decimal string between 0 and 100, with at most four decimal places. Display it as a percentage with its period. These terms are recorded; repayment/interest schedules and settlement calculations are deferred.
+Interest method is `FLAT` or `REDUCING_BALANCE`; period is `MONTHLY` or `ANNUAL`. Rate is a decimal string with at most four decimal places. Bye-law 67 caps interest at 15% per annum: an `ANNUAL` rate above 15, or a `MONTHLY` rate above 1.25, returns 400. Display it as a percentage with its period. These terms are recorded; repayment/interest schedules and settlement calculations are deferred.
 
 The backend rechecks advisory figures during approval. Any flag requires a non-empty `override_reason`, otherwise 409. An empty flag list never approves automatically. A successful approval saves `eligibility_snapshot`, approved amount/duration/interest terms, reviewer, review time, optional reason, and override reason. Later settings changes do not rewrite that snapshot. No admin or owner can approve their own loan (403).
 
@@ -675,6 +828,8 @@ HTTP 200 returns `ACTIVE`, `disbursed_amount`, `disbursed_at`, `disbursement_ref
 Do not show repayment schedules, amounts repaid, balances owed, overdue labels, or repayment buttons. Loan repayment collection is outside this version. `ACTIVE` means funds were recorded as sent; it is not a calculation of what remains unpaid.
 
 Errors: 400 for invalid input, rate, dates, list options, or a disbursement amount that differs from approval; 401 without authentication; 403 for unauthorized management, inactive member access, or self-approval; 404 for an unknown/inaccessible loan; 409 for a completed decision, missing advisory override, unapproved/repeated disbursement, or reused transfer reference. Apply `00015_loans.sql` before using this step.
+
+The form's "For official use" approvals by the Loan Committee Chairman and the ARA President, and the membership form's committee acceptance, are not modelled yet; one admin approval is still sufficient.
 
 ## Running Locally
 

@@ -64,6 +64,15 @@ type PaystackConfig struct {
 	OwnerSubaccount string
 }
 
+// CloudinaryConfig signs browser uploads of passport photos. Signing answers 503 when any
+// value is missing. Clients build image URLs from the cloud name and the
+// stored public ID.
+type CloudinaryConfig struct {
+	CloudName string
+	APIKey    string
+	APISecret string
+}
+
 type PaymentsConfig struct {
 	// MaintenanceFeePercent is MAINTENANCE_FEE_PERCENT, a whole percent
 	// (5 means 5%) added on top of the underlying amount.
@@ -71,14 +80,15 @@ type PaymentsConfig struct {
 }
 
 type Config struct {
-	Server   ServerConfig
-	Database DataBaseConfig
-	Shares   SharesConfig
-	Auth     AuthConfig
-	Email    EmailConfig
-	Paystack PaystackConfig
-	Payments PaymentsConfig
-	IsDev    bool
+	Server     ServerConfig
+	Database   DataBaseConfig
+	Shares     SharesConfig
+	Auth       AuthConfig
+	Email      EmailConfig
+	Paystack   PaystackConfig
+	Cloudinary CloudinaryConfig
+	Payments   PaymentsConfig
+	IsDev      bool
 }
 
 const (
@@ -240,6 +250,11 @@ func New() *Config {
 		},
 		Payments: PaymentsConfig{
 			MaintenanceFeePercent: maintenanceFee,
+		},
+		Cloudinary: CloudinaryConfig{
+			CloudName: strings.TrimSpace(os.Getenv("CLOUDINARY_CLOUD_NAME")),
+			APIKey:    strings.TrimSpace(os.Getenv("CLOUDINARY_API_KEY")),
+			APISecret: strings.TrimSpace(os.Getenv("CLOUDINARY_API_SECRET")),
 		},
 
 		IsDev: os.Getenv("ENV") == "development",

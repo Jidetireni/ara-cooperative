@@ -392,3 +392,18 @@ func (f *FineRepository) MapRepositoryToDTOModel(populated *PopulatedFine) *dto.
 
 	return result
 }
+
+// Count returns the number of fines matching the filter.
+func (f *FineRepository) Count(ctx context.Context, filter FineRepositoryFilter, tx *sqlx.Tx) (int64, error) {
+	query, args, err := f.buildPopulatedQuery(filter, QueryOptions{Type: lo.ToPtr(QueryTypeCount)})
+	if err != nil {
+		return 0, err
+	}
+	var count int64
+	if tx != nil {
+		err = tx.GetContext(ctx, &count, query, args...)
+	} else {
+		err = f.db.GetContext(ctx, &count, query, args...)
+	}
+	return count, err
+}

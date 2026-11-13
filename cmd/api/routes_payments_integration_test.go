@@ -70,6 +70,31 @@ func newFakePaystack(t *testing.T) (*fakePaystack, *httptest.Server) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": true, "message": "ok", "data": charge})
 	})
+	// Banks for loan payouts. 2043541845 at First Bank (011) belongs to
+	// "SESSION MEMBER"; every other account number is unknown (422).
+	mux.HandleFunc("GET /bank", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("next") == "" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": true, "message": "ok",
+				"data": []map[string]any{{"name": "Zenith Bank", "code": "057", "active": true},
+					{"name": "First Bank of Nigeria", "code": "011", "active": true}},
+				"meta": map[string]any{"next": "page2"}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": true, "message": "ok",
+			"data": []map[string]any{{"name": "Access Bank", "code": "044", "active": true},
+				{"name": "Closed Bank", "code": "999", "active": false}},
+			"meta": map[string]any{"next": nil}})
+	})
+	mux.HandleFunc("GET /bank/resolve", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if q.Get("account_number") != "2043541845" || q.Get("bank_code") != "011" {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": false, "message": "Could not resolve account name"})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": true, "message": "ok",
+			"data": map[string]any{"account_number": "2043541845", "account_name": "SESSION MEMBER"}})
+	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 	return fake, server
@@ -132,8 +157,7 @@ func startPayment(t *testing.T, router http.Handler, access string, input dto.Cr
 func completePaymentProfile(t *testing.T, router http.Handler, access string) dto.Member {
 	t.Helper()
 	return profileResult(t, sessionRequest(router, http.MethodPut, "/api/v1/members/me",
-		`{"phone":"08012345678","address":"12 Example Road, Lagos","next_of_kin_name":"Tola","next_of_kin_phone":"08098765432"}`,
-		access, nil))
+		invitationBody(t, validProfileInput()), access, nil))
 }
 
 func webhookRequest(router http.Handler, body, signature string) *httptest.ResponseRecorder {
@@ -279,7 +303,7 @@ func TestPaystackMembershipCheckoutRequiresCompleteProfile(t *testing.T) {
 				fields := []any{"08012345678", "12 Example Road, Lagos", "Tola", "08098765432", userID}
 				fields[index] = value.value
 				if _, err := db.Exec(`UPDATE members SET phone = $1, address = $2,
-					next_of_kin_name = $3, next_of_kin_phone = $4 WHERE user_id = $5`, fields...); err != nil {
+					next_of_kin_name = $3, next_of_kin_phone = $4, declaration_accepted_at = NOW() WHERE user_id = $5`, fields...); err != nil {
 					t.Fatal(err)
 				}
 				quote := sessionRequest(router, http.MethodGet,

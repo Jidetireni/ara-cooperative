@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
+	"github.com/samber/lo"
 )
 
 func (l *Loan) pending(ctx context.Context, id uuid.UUID, tx *sqlx.Tx) (*repository.Loan, error) {
@@ -43,6 +44,13 @@ func (l *Loan) Approve(ctx context.Context, id uuid.UUID, input dto.LoanApproval
 	}
 	if number.Cmp(big.NewRat(100, 1)) > 0 {
 		return nil, apiError(http.StatusBadRequest, "interest_rate_percent must be between 0 and 100")
+	}
+	annual := new(big.Rat).Set(number)
+	if input.InterestPeriod == "MONTHLY" {
+		annual.Mul(annual, big.NewRat(12, 1))
+	}
+	if annual.Cmp(big.NewRat(byelawMaxAnnualInterestPct, 1)) > 0 {
+		return nil, apiError(http.StatusBadRequest, "interest cannot exceed 15 percent per annum (bye-law 67)")
 	}
 	validMethod := input.InterestMethod == "FLAT" || input.InterestMethod == "REDUCING_BALANCE"
 	validPeriod := input.InterestPeriod == "MONTHLY" || input.InterestPeriod == "ANNUAL"
@@ -75,6 +83,13 @@ func (l *Loan) Approve(ctx context.Context, id uuid.UUID, input dto.LoanApproval
 	checks, err := l.eligibility(ctx, loan, tx)
 	if err != nil {
 		return nil, err
+	}
+	if input.DurationMonths > byelawMaxRepaymentMonths && !lo.ContainsBy(checks.Flags, func(f dto.LoanAdvisoryFlag) bool {
+		return f.Code == "REPAYMENT_OVER_TWELVE_MONTHS"
+	}) {
+		checks.Flags = append(checks.Flags, dto.LoanAdvisoryFlag{
+			Code: "REPAYMENT_OVER_TWELVE_MONTHS", Message: "Approved duration runs past 12 months (bye-law 71)",
+		})
 	}
 	input.OverrideReason = strings.TrimSpace(input.OverrideReason)
 	if len(checks.Flags) > 0 && input.OverrideReason == "" {
