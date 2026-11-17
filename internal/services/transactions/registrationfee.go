@@ -29,6 +29,9 @@ func (t *Transaction) ChargeRegistrationFee(ctx context.Context, input *dto.Tran
 		return nil, err
 	}
 
+	if member.IsExistingMember {
+		return nil, &svc.APIError{Status: http.StatusConflict, Message: "existing members do not pay the membership fee"}
+	}
 	if member.ActivatedAt.Valid {
 		return nil, &svc.APIError{
 			Status:  http.StatusBadRequest,

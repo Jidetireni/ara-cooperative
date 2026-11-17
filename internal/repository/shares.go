@@ -57,6 +57,7 @@ type populatedShareFlat struct {
 	TsCreatedAt   *time.Time `json:"ts_created_at"`
 
 	// Member fields
+	MbIsExistingMember      bool       `json:"mb_is_existing_member"`
 	MbID                    uuid.UUID  `json:"mb_id"`
 	MbUserID                uuid.UUID  `json:"mb_user_id"`
 	MbFirstName             string     `json:"mb_first_name"`
@@ -111,6 +112,7 @@ func (s *ShareRepository) populatedSelectColumns() []string {
 
 		// Member fields
 		"mb.id AS mb_id",
+		"mb.is_existing_member AS mb_is_existing_member",
 		"mb.user_id AS mb_user_id",
 		"mb.first_name AS mb_first_name",
 		"mb.last_name AS mb_last_name",
@@ -311,6 +313,7 @@ func (s *ShareRepository) mapFlatToPopulated(flat *populatedShareFlat) *Populate
 	}
 
 	member := Member{
+		IsExistingMember:      flat.MbIsExistingMember,
 		ID:                    flat.MbID,
 		UserID:                flat.MbUserID,
 		FirstName:             flat.MbFirstName,

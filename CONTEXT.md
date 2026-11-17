@@ -39,11 +39,12 @@ _Avoid_: Maintenance fee.
 A contribution recorded against a member’s personal savings.
 _Avoid_: Membership fee.
 
-**Campaign**:
-A named cooperative event or project for which members contribute money.
-
 **Special deposit**:
-A member's contribution to cooperative funds designated for a campaign, recorded separately from personal savings.
+A named cooperative collection for an event or project, funded by member contributions separately from personal savings.
+_Avoid_: Campaign.
+
+**Special deposit contribution**:
+A member's payment into a named special deposit, recorded separately from personal savings.
 _Avoid_: Savings deposit when referring to event or project contributions.
 
 **Share purchase**:

@@ -147,3 +147,19 @@ func (h *Handlers) SavePassportPhoto(w http.ResponseWriter, r *http.Request) {
 		h.logError(r, err)
 	}
 }
+
+// UpdateExistingMember changes the registration-fee exemption for admins.
+func (h *Handlers) UpdateExistingMember(w http.ResponseWriter, r *http.Request) {
+	var input dto.UpdateExistingMemberInput
+	if !h.decodeAndValidate(w, r, &input) {
+		return
+	}
+	member, err := h.factory.Services.Member.SetExistingMember(r.Context(), chi.URLParam(r, "slug"), *input.IsExistingMember)
+	if err != nil {
+		h.errorResponse(w, r, err)
+		return
+	}
+	if err := h.writeJSON(w, http.StatusOK, member, nil); err != nil {
+		h.logError(r, err)
+	}
+}

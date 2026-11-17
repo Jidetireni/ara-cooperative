@@ -268,6 +268,7 @@ type Member struct {
 	DeclarationAcceptedAt     sql.NullTime   `json:"declaration_accepted_at"`
 	PassportPhotoPublicID     sql.NullString `json:"passport_photo_public_id"`
 	PassportPhotoVersion      sql.NullInt64  `json:"passport_photo_version"`
+	IsExistingMember          bool           `json:"is_existing_member"`
 }
 
 type MemberBeneficiary struct {

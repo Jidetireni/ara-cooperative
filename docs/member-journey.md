@@ -4,14 +4,14 @@ This document records the agreed product direction. Implementation progress and 
 
 ## Current Version
 
-Include invitation-based membership, account recovery, Paystack payments, personal savings, campaign contributions, share purchases, fines, loan applications, admin decisions, and records of external loan disbursements.
+Include invitation-based membership, account recovery, Paystack payments, personal savings, special deposit contributions, share purchases, fines, loan applications, admin decisions, and records of external loan disbursements.
 
 Exclude the entire loan-repayment feature, dividends, and member savings withdrawals. Existing accounts and financial records are test/demo data; a real-member migration is not required. Starting fresh does not authorize deleting data automatically.
 
 ## Roles and Access
 
 - **Owner:** manages both the platform and cooperative, controls admin access and fee settings, and receives platform maintenance-fee income separately from cooperative funds.
-- **Admin:** invites and manages members, manages campaigns, assigns fines, reviews loans, and records external disbursements and campaign refund labels.
+- **Admin:** invites and manages members, manages special deposits, assigns fines, reviews loans, and records external disbursements and special deposit refund labels.
 - **Member:** maintains a personal profile and uses financial features after membership activation.
 
 A user can be both an admin and a member. Admin access alone is free. An admin participating as a member needs a member profile and pays the same membership fee.
@@ -37,19 +37,19 @@ The cooperative's paper membership application form, loan application form and b
 
 ## Joining and Login
 
-1. An admin invites a member using their name and email.
+1. An admin invites a member using their name and email. An optional “Existing cooperative member” toggle marks members who already belong to the cooperative; it defaults to off. Admins can change it later from the member profile.
 2. The invited member sets a password and signs in with email and password.
 3. The member completes the membership application form (see above), accepts its declaration, and uploads a passport photo.
-4. The application displays the NGN 1,000 one-time membership fee, maintenance fee, Paystack charge, and total payable.
+4. Existing cooperative members activate when they save the required application and declaration, without paying a membership fee or creating a payment/ledger entry. Their passport photo is optional for activation. New members continue to the NGN 1,000 one-time membership fee, maintenance fee, Paystack charge, and total payable.
 5. The member pays through Paystack. The application shows processing until the backend verifies success.
 6. Verified payment records the membership fee and activates membership together.
 7. The member receives a receipt and access to financial features.
 
-Before activation, members can complete their profiles and pay the joining fee. They cannot use financial features. Invited users can request a fresh invitation if it expires or fails to arrive; uninvited addresses cannot join through resending. Password reset is available by email.
+Before activation, members can complete their profiles; new members can pay the joining fee. Only admins/owners set the existing-member flag on invitation or from the member profile; invitation retries preserve its current value. Enabling it activates a pending member with a saved required application and declaration, without a fee or photo requirement. Disabling it restores fees for pending members while preserving already-active memberships and existing financial records. Existing members cannot request a membership-fee quote or start membership-fee checkout. They cannot use financial features. Invited users can request a fresh invitation if it expires or fails to arrive; uninvited addresses cannot join through resending. Password reset is available by email.
 
 ## Payments and Fees
 
-Paystack verifies incoming payments for membership fees, savings, campaigns, shares, and fines. Admins do not manually approve these payments.
+Paystack verifies incoming payments for membership fees, savings, special deposits, shares, and fines. Admins do not manually approve these payments.
 
 Members pay the underlying amount, an additional maintenance fee, and Paystack processing charges. The maintenance fee defaults to 5% and is set with `MAINTENANCE_FEE_PERCENT`, a whole percent from 0 to 100. All amounts are stored and exchanged in kobo.
 
@@ -71,13 +71,13 @@ Each payment must retain its member, purpose, unique reference, currency, expect
 | Feature | Agreed behavior |
 |---|---|
 | Savings | Voluntary contributions whenever the member chooses, with a NGN 100 minimum before charges. No required monthly contribution. |
-| Campaigns / special deposits | Contributions become cooperative funds for a named event or project, tracked separately from personal savings. Admins choose voluntary or required participation and fixed or flexible amounts per campaign. |
+| Special deposits | Contributions become cooperative funds for a named event or project, tracked separately from personal savings. Admins choose voluntary or required participation and fixed or flexible amounts per special deposit. |
 | Shares | Start at NGN 500 per unit. Fractional units are allowed: NGN 750 buys 1.5 units before charges. Operators configure future prices through `SHARE_UNIT_PRICE` in kobo and restart/redeploy the API; previous purchase prices and units are preserved. |
 | Fines | An admin assigns a member, amount, reason, and due date. Members pay the full fine through Paystack; partial fine payments are excluded. Verified payment marks the fine paid. |
 
-Proposed display label: "campaign contribution" instead of "special deposit"; the final label is not yet agreed. Dividend calculation and distribution are deferred.
+The agreed frontend feature label is **Special deposits**. A payment into a named special deposit is a **special deposit contribution**. Dividend calculation and distribution are deferred.
 
-Campaign clarification: required campaigns apply to all active members. Both fixed and flexible campaigns allow repeated contributions; each fixed contribution must equal the campaign's fixed amount. Campaign creation/editing, dates, closing/cancellation, admin resolution notes, Paystack association, verified totals, and scoped contribution history are implemented in Step 5 of `../frontend.md`. Required participation is displayed without automatic penalties. Existing checkout terms remain fixed after campaign edits. Closed/cancelled campaigns reject new contributions, and existing payments remain in history.
+Special deposit clarification: required special deposits apply to all active members. Both fixed and flexible special deposits allow repeated contributions; each fixed contribution must equal the special deposit's fixed amount. Special deposit creation/editing, dates, closing/cancellation, admin resolution notes, Paystack association, verified totals, and scoped contribution history are implemented in Step 5 of `../frontend.md`. Required participation is displayed without automatic penalties. Existing checkout terms remain fixed after special deposit edits. Closed/cancelled special deposits reject new contributions, and existing payments remain in history.
 
 ## Loan Applications and External Disbursement
 
@@ -95,9 +95,9 @@ Implemented loan states are `PENDING`, `APPROVED`, `REJECTED`, and `ACTIVE`. Adm
 
 ## Cancellations and Refunds
 
-An admin decides how to resolve a cancelled campaign. Cancellation does not automatically refund or credit contributions.
+An admin decides how to resolve a cancelled special deposit. Cancellation does not automatically refund or credit contributions.
 
-Refund processing and detailed refund records are deferred. For now an admin sets a campaign-wide `is_refunded` flag after closure/cancellation to report that refunds were handled outside the app; they can correct the flag later. The flag does not change payments, contribution totals, balances, or fees. It does not verify a bank refund. Any actual approved refund remains an external cooperative action; the agreed principal-only refund policy retains the platform maintenance fee.
+Refund processing and detailed refund records are deferred. For now an admin sets a collection-wide `is_refunded` flag after closure/cancellation to report that refunds were handled outside the app; they can correct the flag later. The flag does not change payments, contribution totals, balances, or fees. It does not verify a bank refund. Any actual approved refund remains an external cooperative action; the agreed principal-only refund policy retains the platform maintenance fee.
 
 ## Deferred Work and Open Decisions
 
@@ -105,7 +105,7 @@ Refund processing and detailed refund records are deferred. For now an admin set
 - Dividends and member savings withdrawals are outside this version.
 - Confirm any maintenance-fee exemptions before introducing them.
 - Committee acceptance of membership applications and two-step loan approval (Loan Committee Chairman, then ARA President) from the paper forms.
-- Define non-refund campaign resolutions and which payments qualify for refunds.
+- Define non-refund special deposit resolutions and which payments qualify for refunds.
 - Define handling of duplicate successful payments and the refund treatment of Paystack processing charges.
 
 ## Paystack References

@@ -171,8 +171,8 @@ func (t *Transaction) UpdateStatus(ctx context.Context, id *uuid.UUID, input *dt
 				return nil, err
 			}
 			member, err := t.MemberRepo.Get(ctx, repository.MemberRepositoryFilter{
-				ID: lo.ToPtr(txn.MemberID),
-			}, nil)
+				ID: lo.ToPtr(txn.MemberID), ForUpdate: true,
+			}, tx)
 			if err != nil {
 				return nil, err
 			}
