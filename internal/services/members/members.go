@@ -178,6 +178,7 @@ func (m *Member) Create(
 		member, err = m.MemberRepository.Create(ctx, &repository.Member{
 			UserID: user.ID, Slug: fmt.Sprintf("ara%06d", number),
 			FirstName: input.FirstName, LastName: input.LastName,
+			IsExistingMember: input.IsExistingMember,
 		}, tx)
 	}
 	if err != nil {

@@ -58,6 +58,11 @@ func (m *Member) profile(ctx context.Context, member *repository.Member, tx *sql
 }
 
 func profileComplete(p *dto.Member) bool {
+	return applicationComplete(p) && p.PassportPhoto != nil
+}
+
+// applicationComplete excludes the optional passport photo from activation.
+func applicationComplete(p *dto.Member) bool {
 	required := []string{
 		p.Title, p.Phone, p.Address, p.PlaceOfBirth, p.Nationality, p.StateOfOrigin, p.HomeTown, p.LGA,
 		p.NextOfKinName, p.NextOfKinAddress, p.NextOfKinPhone,
@@ -67,7 +72,7 @@ func profileComplete(p *dto.Member) bool {
 			return false
 		}
 	}
-	return len(p.Beneficiaries) > 0 && p.PassportPhoto != nil && p.DeclarationAcceptedAt != nil
+	return len(p.Beneficiaries) > 0 && p.DeclarationAcceptedAt != nil
 }
 
 func (m *Member) Current(ctx context.Context) (*dto.Member, error) {
@@ -224,6 +229,9 @@ func (m *Member) UpdateProfile(
 	if !member.DeclarationAcceptedAt.Valid {
 		member.DeclarationAcceptedAt = sql.NullTime{Time: time.Now(), Valid: true}
 	}
+	if member.IsExistingMember && !member.ActivatedAt.Valid {
+		member.ActivatedAt = sql.NullTime{Time: time.Now(), Valid: true}
+	}
 	updated, err := m.MemberRepository.Update(ctx, member, tx)
 	var duplicate *pq.Error
 	if errors.As(err, &duplicate) && duplicate.Code == "23505" {
@@ -277,8 +285,8 @@ func (m *Member) GetBySlug(ctx context.Context, slug string) (*dto.MemberCard, e
 const MaxMemberSearchResults = 10
 
 // Search finds members by name or membership number and returns directory
-// cards only, with is_active so clients can mark members who have not paid
-// the membership fee yet (a pending guarantor is an advisory flag at review).
+// cards only, with is_active so clients can mark members whose onboarding
+// is unfinished (a pending guarantor is an advisory flag at review).
 // Any signed-in member may search, including pending members choosing who
 // introduced them; email addresses are never matched.
 func (m *Member) Search(ctx context.Context, query string) ([]dto.MemberCard, error) {

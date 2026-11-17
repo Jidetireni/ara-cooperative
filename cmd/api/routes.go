@@ -45,6 +45,7 @@ func (s *Server) router() {
 				r.Post("/", s.Handlers.CreateMember)
 				r.Get("/", s.Handlers.ListMembers)
 				r.Get("/{slug}/profile", s.Handlers.AdminMemberProfile)
+				r.Patch("/{slug}/existing-member", s.Handlers.UpdateExistingMember)
 			})
 
 			r.Group(func(r chi.Router) {

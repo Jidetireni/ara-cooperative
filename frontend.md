@@ -8,9 +8,9 @@ This file tracks the frontend contract as backend work lands. Use `/api/v1` as t
 |---|---|---|
 | 1. Account/session context | Implemented and verified | Login, refresh, and current-user lookup expose roles and optional membership. |
 | 2. Owner bootstrap and admin permissions | Implemented and verified | Stored owner role, owner-only admin grants/revocations, and live authorization checks. |
-| 3. Invitation and profile onboarding | Invitations and profile completion implemented | Name/email-only invitations, password setup, admin retries, pending-member access checks, member profile read/update (`GET`/`PUT /members/me`), and the admin member list (`GET /members`) are ready. Self-service invitation resend and password reset remain planned. |
+| 3. Invitation and profile onboarding | Invitations, profile completion, and existing-member onboarding implemented | Invitations with an existing-member toggle, password setup, admin retries, pending-member access checks, member profile read/update (`GET`/`PUT /members/me`), and the admin member list (`GET /members`) are ready. Admin invitations accept `is_existing_member` to skip the membership fee after application completion (migration `00019`). Self-service invitation resend and password reset remain planned. |
 | 4. Paystack checkout and split settlement | Implemented and tested | Quote, checkout (`POST /payments` returns `authorization_url`), status reads, signed webhook verification, and owner subaccount settlement (`subaccount` + `transaction_charge`). Amounts are kobo. |
-| 5. Campaigns | Implemented | Creation/editing, dates, participation and amount rules, Paystack contributions, totals/history, closing/cancellation, resolution notes, and a manual refunded flag. |
+| 5. Special deposits | Implemented | Creation/editing, dates, participation and amount rules, Paystack contributions, totals/history, closing/cancellation, resolution notes, and a manual refunded flag. |
 | 6. Loans | Implemented | Applications, admin history/review, configurable advisory thresholds, approval/rejection, and recording external disbursements. Repayments remain deferred. |
 | 7. Paper-form parity | Implemented and tested | Member profile and loan application follow the paper membership and loan forms: personal and origin details, workplace, beneficiaries, pledge, referrer, declaration, Cloudinary passport photo, admin profile view, member cards and member search (referrer and guarantor pickers), loan repayment proposal, payout account checked with Paystack's bank list and account resolve, two guarantors with accept/decline (emailed a link to an approve page), and bye-law advisory flags. Apply `00016`, `00017` and `00018`. |
 
@@ -91,6 +91,7 @@ Example response for a member awaiting activation:
 - `roles` is an array, including `[]` when there are no assigned roles.
 - `member` is omitted when the account has no member profile. This is valid for an admin account.
 - `member.is_active` reports the current activation state.
+- `member.is_existing_member` identifies existing cooperative members who skip the membership fee and activate after saving their application and declaration.
 - `confirmed_at` is omitted when email confirmation is absent.
 - Password hashes and refresh tokens are not included in the response body.
 
@@ -146,7 +147,7 @@ Member invitations use this existing endpoint; see Step 3 for the link format. P
 | Both admin and member roles | Support both management and personal-member views. |
 | No suitable role or missing required profile | Account-support state; do not assume membership or activation. |
 
-Profile completion is available through `GET`/`PUT /api/v1/members/me`, and the membership fee is paid through Step 4. Financial member routes require an active membership; `/me`, login, and refresh remain available to pending members.
+Profile completion is available through `GET`/`PUT /api/v1/members/me`, and new members pay the membership fee through Step 4. Existing cooperative members skip payment and activate after saving the required application and declaration. Financial member routes require an active membership; `/me`, login, and refresh remain available to pending members.
 
 Server logout, password recovery, and self-service invitation resend are not implemented yet. Admins can retry an invitation through the existing member-creation endpoint. A local sign-out alone does not revoke the refresh cookie.
 
@@ -227,13 +228,14 @@ Emails are rendered from templates compiled into the binary (`pkg/email/template
 
 ### Admin form and response
 
-Use the existing `POST /api/v1/members/` endpoint with the owner/admin bearer token. Collect name and email only:
+Use the existing `POST /api/v1/members/` endpoint with the owner/admin bearer token. Collect name and email, plus an optional **Existing cooperative member** toggle (off by default):
 
 ```json
 {
   "first_name": "Ada",
   "last_name": "Member",
-  "email": "ada@example.com"
+  "email": "ada@example.com",
+  "is_existing_member": false
 }
 ```
 
@@ -254,7 +256,8 @@ Success returns HTTP 201:
       "address": "",
       "next_of_kin_name": "",
       "next_of_kin_phone": "",
-      "is_active": false
+      "is_active": false,
+      "is_existing_member": false
     },
     "requires_password_setup": true,
     "expires_at": "2026-11-08T12:30:00Z",
@@ -264,9 +267,29 @@ Success returns HTTP 201:
 }
 ```
 
-The response contains no setup token. `delivery: "sent"` means the email transport accepted the message; in development without `RESEND_API_KEY` it means the message was only printed in API logs. If `delivery` is `"failed"`, the membership still exists: show a delivery warning and let the admin retry the same request. Retrying a pending invitation preserves its member ID and profile, renews the setup link, and invalidates the old link. An already active membership returns 409. Concurrent requests creating the same new account may also return 409; retry that invitation.
+The response contains no setup token. `delivery: "sent"` means the email transport accepted the message; in development without `RESEND_API_KEY` it means the message was only printed in API logs. If `delivery` is `"failed"`, the membership still exists: show a delivery warning and let the admin retry the same request. Retrying a pending invitation preserves its member ID, profile, and current `is_existing_member` value (even if a different value is sent), renews the setup link, and invalidates the old link. An already active membership returns 409. Concurrent requests creating the same new account may also return 409; retry that invitation.
 
 Existing accounts keep their password and current roles, gaining a separate pending member profile. Their email links to login, `requires_password_setup` is false, and `expires_at` is omitted. Ordinary members receive 403 when inviting; missing/invalid authentication receives 401. Invalid input receives 400.
+
+### Existing cooperative members
+
+Apply migration `00019_existing_members.sql` before deploying this contract. It defaults all stored members to `false` without changing activation or financial records. The `is_existing_member` boolean defaults to `false` when omitted. Owner/admin callers may set it to `true` when registering someone who already belongs to the cooperative. No reason or separate endpoint is required. Resending an invitation does not change the value. Admins and owners can change it later from the member profile using the endpoint below.
+
+On the invitation form, label the toggle **Existing cooperative member** with help text: “Already belongs to the cooperative. No membership fee is required.” Keep it off for new members. Both options create a pending profile and send the normal password-setup or login invitation.
+
+The member object includes `is_existing_member` in invitation responses, login, refresh, `GET /me`, `GET /members/me`, the admin profile, and the admin member list. Members cannot set this flag through `PUT /members/me`; sending it there returns 400. Ordinary members cannot create invitations (403).
+
+For `is_existing_member: true`, show “Your existing cooperative membership has been confirmed. Complete your membership application to continue.” Skip the membership-fee screen and all registration-fee quote/checkout requests. A successful `PUT /members/me` with the required form and declaration activates membership atomically, without creating any payment or ledger entry. The passport photo is optional for activation; `profile_complete` can remain false until it is uploaded. Invalid saves leave membership pending. Repeated saves preserve activation.
+
+After saving, use the returned `is_active`, then reload `GET /me` to refresh session navigation. Route active members to their dashboard. Pending existing members go to the application form; pending new members complete the form and then follow Step 4 to pay. Use `GET /members/me` to load application progress; `profile_complete` includes the photo and must not be used as a payment/activation prerequisite.
+
+### Admin changes existing-member status
+
+`PATCH /api/v1/members/{slug}/existing-member`, with an owner/admin bearer token and `{"is_existing_member":true}` or `{"is_existing_member":false}`, returns the updated full member profile (HTTP 200). A boolean is required; omitted, null or non-boolean values return 400. Unknown/deleted members return 404; ordinary members receive 403.
+
+Show an **Existing cooperative member** switch in the admin member profile. Save changes immediately and refresh the displayed profile. Enabling waives the registration fee and atomically activates a pending member whose required application and declaration are already saved; otherwise they activate when they save the form. A passport photo is optional. Disabling restores the fee requirement for pending members. Already-active memberships remain active in either direction. This operation creates no payment or ledger entries and does not refund earlier fees.
+
+Pending member apps refresh account context on window focus and every 15 seconds so admin changes update onboarding and access without another login.
 
 ### Member accepts the invitation
 
@@ -274,13 +297,13 @@ The email links to `${FE_URL}/set-password#email=...&token=...`. Read `email` an
 
 Submit the email, token, and chosen password to the existing `POST /api/v1/set-password`. HTTP 201 returns session data and a refresh cookie. Show a pending-onboarding screen: password setup confirms the email and leaves `member.is_active` false. Invalid, expired, replaced, and consumed tokens return 400. The frontend form itself is not included in this backend repository.
 
-`GET /api/v1/me`, login, and refresh work before activation. Existing member-only financial routes return 403 with `active membership required` until activation. Profile completion is described below. Paying the membership fee through Step 4 activates the member; self-service resend and password reset are still planned.
+`GET /api/v1/me`, login, and refresh work before activation. Existing member-only financial routes return 403 with `active membership required` until activation. Profile completion is described below. For new members, paying the membership fee through Step 4 activates membership; existing members activate when they save the required application and declaration; self-service resend and password reset are still planned.
 
 ### Member completes their profile
 
-The profile follows the paper **membership application form**, which is the source of truth. A member reads and saves their own profile. Both endpoints need a bearer token and the `member` role, and both work before activation. Saving a profile never activates membership or unlocks financial routes.
+The profile follows the paper **membership application form**, which is the source of truth. A member reads and saves their own profile. Both endpoints need a bearer token and the `member` role, and both work before activation. Saving the required form and declaration activates members marked `is_existing_member: true`. New members remain pending until the membership fee is verified.
 
-`GET /api/v1/members/me` returns the full member object (HTTP 200). An invited profile has only the name, slug and ID until the member saves it. Use `profile_complete` to decide whether onboarding is finished: it is `true` once every required field, at least one beneficiary, the passport photo and the declaration are on record. Optional fields are omitted from the JSON when empty.
+`GET /api/v1/members/me` returns the full member object (HTTP 200). An invited profile has only the name, slug and ID until the member saves it. Use `profile_complete` to prompt for unfinished profile details: it is `true` once every required field, at least one beneficiary, the passport photo and the declaration are on record. Use `is_active` for access to financial features; a missing photo does not prevent activation. Optional fields are omitted from the JSON when empty.
 
 `PUT /api/v1/members/me` replaces the whole form. Required fields are marked; the rest may be blank or omitted:
 
@@ -319,7 +342,7 @@ Show the form's declaration text next to the checkbox: *"I hereby apply as a mem
 
 The referrer ("Introduced by") is a member: let the member pick them with the member search below and send only their number. The server checks the number is a member other than the applicant (400 otherwise) and stores `introduced_by_name` from that member's record; any `introduced_by_name` sent is ignored. Send `""` to clear it.
 
-The server trims surrounding whitespace. Phone numbers (including beneficiary phones) need 7 to 15 digits with an optional leading `+`; spaces, dashes, and brackets are rejected. HTTP 200 returns the saved member object. Name, slug, ID, `is_active` and the passport photo are unchanged; this endpoint cannot edit the first or last name. The member can save again later to edit. After saving, `GET /api/v1/me` returns the updated `member` (with `passport_photo`, without `beneficiaries` or `profile_complete`; read those from `/members/me`).
+The server trims surrounding whitespace. Phone numbers (including beneficiary phones) need 7 to 15 digits with an optional leading `+`; spaces, dashes, and brackets are rejected. HTTP 200 returns the saved member object. Name, slug, ID, `is_existing_member` and the passport photo are unchanged; this endpoint cannot edit the first or last name. Saving activates pending existing cooperative members; new members still need verified membership-fee payment. The member can save again later to edit. After saving, `GET /api/v1/me` returns the updated `member` (with `passport_photo`, without `beneficiaries` or `profile_complete`; read those from `/members/me`).
 
 | Status | Meaning |
 |---|---|
@@ -376,7 +399,7 @@ The passport photo is also the member's **profile picture**. Every member object
 
 Errors: step 3 returns 400 when `public_id` is not this member's or the signature does not match (upload again); both steps return 503 when Cloudinary is not configured on the API (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`). Cloudinary's own errors (wrong format, expired signature) come back from Cloudinary in step 2.
 
-The membership fee checkout (`REGISTRATION_FEE`) returns 409 until the form has been saved with the declaration. The passport photo is not required for paying, so a storage outage cannot block joining; show `profile_complete` to prompt for it.
+For new members, the membership fee checkout (`REGISTRATION_FEE`) returns 409 until the form has been saved with the declaration. The passport photo is not required for paying, so a storage outage cannot block joining; show `profile_complete` to prompt for it.
 
 ### Admin views a member's application
 
@@ -394,7 +417,7 @@ Contact and application details are never included.
 
 ### Member search (referrer and guarantor pickers)
 
-`GET /api/v1/members/search?q=ade` returns up to 10 directory cards for members whose first, middle or last name, full name, or membership number contains `q` (case-insensitive). Pending members (membership fee not yet confirmed) are included with `is_active: false`; mark them, since a pending guarantor raises the `GUARANTOR_NOT_ACTIVE` flag at review. Email addresses are never matched. `q` must be 2 to 100 characters (400 otherwise). Any signed-in member may search, including a pending member choosing who introduced them.
+`GET /api/v1/members/search?q=ade` returns up to 10 directory cards for members whose first, middle or last name, full name, or membership number contains `q` (case-insensitive). Pending members (application or membership-fee onboarding is unfinished) are included with `is_active: false`; mark them, since a pending guarantor raises the `GUARANTOR_NOT_ACTIVE` flag at review. Email addresses are never matched. `q` must be 2 to 100 characters (400 otherwise). Any signed-in member may search, including a pending member choosing who introduced them.
 
 ```json
 {"data": [{"id": "...", "slug": "ara000002", "first_name": "Tola", "middle_name": "Ade", "last_name": "Member", "is_active": true}]}
@@ -431,7 +454,7 @@ Search as the member types (debounce about 250 ms), list name and number, and ke
 }
 ```
 
-`email_confirmed` is false until the invited person sets their password. Derive a display status: `is_active` → active; `!email_confirmed` → invited (offer to resend with `POST /members`); otherwise → awaiting the membership fee. Profile completeness follows the same rule as `GET /members/me`. Soft-deleted members are excluded, and the response never contains password data.
+`email_confirmed` is false until the invited person sets their password. Derive a display status: `is_active` → active; `!email_confirmed` → invited (offer to resend with `POST /members`); otherwise, `is_existing_member` → complete application; new members → complete application / awaiting the membership fee. Profile completeness follows the same rule as `GET /members/me`. Soft-deleted members are excluded, and the response never contains password data.
 
 Query parameters, all optional:
 
@@ -484,7 +507,7 @@ Errors: 400 for an unknown `ledger_type`, `type`, or `status`, a malformed `memb
 curl -s 'http://localhost:5001/api/v1/transactions/me?limit=10' -H "Authorization: Bearer $MEMBER_TOKEN"
 ```
 
-Errors: 400 for an unknown `ledger_type`, `type`, or `status`, or a malformed `cursor`; 401 without a token; 403 for a member who has not paid the membership fee.
+Errors: 400 for an unknown `ledger_type`, `type`, or `status`, or a malformed `cursor`; 401 without a token; 403 for a member whose membership is not active.
 
 ### Schema and logging
 
@@ -494,13 +517,15 @@ Application logging uses the existing `pkg/logger` integration with Uber Zap and
 
 ## Step 4: Paystack Payments
 
+For members with `is_existing_member: true`, skip `REGISTRATION_FEE` quotes and checkout. Both `GET /payments/quote?purpose=REGISTRATION_FEE` and `POST /payments` with that purpose return 409 with `existing members do not pay the membership fee`, before or after activation. The older manual registration-fee path also rejects existing members. Other payments use the normal rules after activation.
+
 All amounts are integers in kobo (NGN 1 = 100 kobo). Show naira by dividing by 100 only for display. Every online payment is the underlying `amount` plus a `maintenance_fee` (`MAINTENANCE_FEE_PERCENT` of the amount, default 5) plus a `processing_charge` that covers Paystack's fee. `total` is what the member pays. The member's ledger is credited with `amount` only.
 
 | Purpose | `amount` | Who can pay | Effect after verification |
 |---|---|---|---|
 | `REGISTRATION_FEE` | Omit; fixed at 100000 (NGN 1,000) | Members not yet active, with a complete profile | Activates the member. |
 | `SAVINGS` | Required, at least 10000 | Active members | Savings credit. |
-| `SPECIAL_DEPOSIT` | Send `campaign_id`; omit amount for fixed campaigns, otherwise at least 50000 | Active members | Contribution to the selected campaign. |
+| `SPECIAL_DEPOSIT` | Send `campaign_id`; omit amount for fixed special deposits, otherwise at least 50000 | Active members | Contribution to the selected special deposit. |
 | `SHARES` | Required; units are quoted at the current unit price | Active members | Share purchase at the quoted units and price. |
 | `FINES` | Omit (the fine's full amount); send `fine_id` | Active members, own unpaid fine | Marks the fine paid. |
 
@@ -559,7 +584,7 @@ curl -s -X POST 'http://localhost:5001/api/v1/payments/ara_sav_4f9c0a1b2c3d4e5f6
 
 ### Metadata and split
 
-Checkout sends metadata `payment_id`, `member_id`, `member_number`, `purpose`, `amount`, `maintenance_fee`, `processing_charge`, `fine_id` (fines only), `campaign_id` (campaign contributions only), and `cancel_action`. The server trusts its own stored payment, not the returned metadata. The cooperative owns the main Paystack business and its payout account. Set `PAYSTACK_OWNER_SUBACCOUNT` to the platform owner's `ACCT_...` code. Checkout sends `subaccount` set to that code, `transaction_charge` set to the underlying `amount`, and `bearer: "subaccount"`. The main account receives `transaction_charge`, so the cooperative retains the full `amount`. The owner subaccount receives the rest, `maintenance_fee + processing_charge`, and Paystack deducts its fee from that share. A dynamic flat `split` is not used because Paystack rejects subaccount shares under NGN 100 ("the total must be equal to or greater than 100"), which small payments produce. New checkouts require a non-empty `PAYSTACK_OWNER_SUBACCOUNT`, including when maintenance is 0%. Missing configuration returns 503 before creating a payment or contacting Paystack. Quotes remain available, and existing checkouts can still be verified and credited using their stored allocation. `PAYSTACK_OWNER_SUBACCOUNT` replaces the old cooperative-subaccount setting; the backend does not reuse the old code.
+Checkout sends metadata `payment_id`, `member_id`, `member_number`, `purpose`, `amount`, `maintenance_fee`, `processing_charge`, `fine_id` (fines only), `campaign_id` (special deposit contributions only), and `cancel_action`. The server trusts its own stored payment, not the returned metadata. The cooperative owns the main Paystack business and its payout account. Set `PAYSTACK_OWNER_SUBACCOUNT` to the platform owner's `ACCT_...` code. Checkout sends `subaccount` set to that code, `transaction_charge` set to the underlying `amount`, and `bearer: "subaccount"`. The main account receives `transaction_charge`, so the cooperative retains the full `amount`. The owner subaccount receives the rest, `maintenance_fee + processing_charge`, and Paystack deducts its fee from that share. A dynamic flat `split` is not used because Paystack rejects subaccount shares under NGN 100 ("the total must be equal to or greater than 100"), which small payments produce. New checkouts require a non-empty `PAYSTACK_OWNER_SUBACCOUNT`, including when maintenance is 0%. Missing configuration returns 503 before creating a payment or contacting Paystack. Quotes remain available, and existing checkouts can still be verified and credited using their stored allocation. `PAYSTACK_OWNER_SUBACCOUNT` replaces the old cooperative-subaccount setting; the backend does not reuse the old code.
 
 ### Local Paystack Webhook
 
@@ -616,21 +641,23 @@ The supplied owner code `ACCT_ebz1hbad8r4zq2u` was accessible with the configure
 
 | Status | Meaning |
 |---|---|
-| 400 | Unknown or `LOAN` purpose, missing/low `amount`, wrong fixed amount, missing/invalid `campaign_id`, campaign/fine ID on another purpose, or bad webhook payload. |
+| 400 | Unknown or `LOAN` purpose, missing/low `amount`, wrong fixed amount, missing/invalid `campaign_id`, special deposit/fine ID on another purpose, or bad webhook payload. |
 | 401 | Missing token; webhook signature invalid. |
 | 403 | Not a member, or a financial purpose before activation. |
-| 404 | Campaign not found, or fine/payment not found for this member. |
-| 409 | Membership profile incomplete at checkout; membership already active; fine already paid; campaign not open. |
+| 404 | Special deposit not found, or fine/payment not found for this member. |
+| 409 | Membership profile incomplete at checkout; membership already active; fine already paid; special deposit not open. |
 | 502 | Paystack refused or could not start the checkout; the payment is stored as `FAILED`. |
 | 503 | `PAYSTACK_SECRET_KEY` is not set, the owner settlement account is not configured (checkout only), or the share unit price is not set. |
 
 Apply `00011_payments.sql` with Goose before using this step.
 
-## Step 5: Campaign Contributions
+## Step 5: Special deposits
 
-Admins and owners create campaigns. Active members can browse them and contribute. Admin access alone does not grant personal membership or permission to pay. Campaign funds remain separate from personal savings.
+Use **Special deposits** for navigation and the page title, **Create special deposit** for the admin action, and **Contribute** for the member payment action. Label payment history and totals **Special deposit contributions**. The API keeps its existing names: `/campaigns`, `campaign_id`, `campaign_contributions`, and payment purpose `SPECIAL_DEPOSIT`; map these to the frontend labels without renaming request or response fields.
 
-### Create a campaign
+Admins and owners create special deposits. Active members can browse them and contribute. Admin access alone does not grant personal membership or permission to pay. Special deposit funds remain separate from personal savings.
+
+### Create a special deposit
 
 `POST /api/v1/campaigns`, using an admin or owner token:
 
@@ -646,35 +673,35 @@ Admins and owners create campaigns. Active members can browse them and contribut
 }
 ```
 
-Returns 201 with the campaign. `name` (max 255) and `description` (max 2000) are trimmed and must be non-empty. Dates use RFC3339; the end must follow the start and be in the future. A past start is allowed for immediate collection.
+Returns 201 with the special deposit. `name` (max 255) and `description` (max 2000) are trimmed and must be non-empty. Dates use RFC3339; the end must follow the start and be in the future. A past start is allowed for immediate collection.
 
 | Field | Options |
 |---|---|
 | `participation` | `VOLUNTARY` or `REQUIRED`. Required applies to all active members; display it clearly. This step does not create fines or block other financial features for non-participation. |
-| `amount_type` | `FIXED` or `FLEXIBLE`. For fixed campaigns, set `amount` in kobo, at least 50000 (NGN 500). Omit `amount` for flexible campaigns. |
+| `amount_type` | `FIXED` or `FLEXIBLE`. For fixed special deposits, set `amount` in kobo, at least 50000 (NGN 500). Omit `amount` for flexible special deposits. |
 
-Admins can edit upcoming/open campaigns, close collection early, or cancel a campaign. Existing checkout amounts and fees remain fixed when campaign settings change. Refund handling is a simple admin-reported flag; the app does not process refunds or collect detailed refund records.
+Admins can edit upcoming/open special deposits, close collection early, or cancel a special deposit. Existing checkout amounts and fees remain fixed when special deposit settings change. Refund handling is a simple admin-reported flag; the app does not process refunds or collect detailed refund records.
 
-### Edit, close, or cancel a campaign
+### Edit, close, or cancel a special deposit
 
-All management endpoints require an admin or owner token and return the updated campaign with HTTP 200.
+All management endpoints require an admin or owner token and return the updated special deposit with HTTP 200.
 
 | Endpoint | Body | Behavior |
 |---|---|---|
 | `PUT /api/v1/campaigns/{id}` | The complete creation form above | Change name, purpose, participation, amount mode/amount, and dates while upcoming/open. Existing payment records retain their original terms; future checkouts use the updated settings. |
-| `PATCH /api/v1/campaigns/{id}/status` | `{"status":"CLOSED","reason":"Collection completed"}` | Stop new contributions early. Use `CANCELLED` to cancel; a non-empty reason is required. A closed campaign can later be cancelled. |
-| `PUT /api/v1/campaigns/{id}/resolution` | `{"resolution":"Admin will contact contributors"}` | Save the admin's decision/notes for a cancelled campaign. Notes do not move or credit money. |
-| `PATCH /api/v1/campaigns/{id}/refund-status` | `{"is_refunded":true}` | Mark a closed/cancelled campaign as refunded. Send `false` to correct the label. This is a campaign-wide admin declaration; totals and payment statuses remain unchanged. |
+| `PATCH /api/v1/campaigns/{id}/status` | `{"status":"CLOSED","reason":"Collection completed"}` | Stop new contributions early. Use `CANCELLED` to cancel; a non-empty reason is required. A closed special deposit can later be cancelled. |
+| `PUT /api/v1/campaigns/{id}/resolution` | `{"resolution":"Admin will contact contributors"}` | Save the admin's decision/notes for a cancelled special deposit. Notes do not move or credit money. |
+| `PATCH /api/v1/campaigns/{id}/refund-status` | `{"is_refunded":true}` | Mark a closed/cancelled special deposit as refunded. Send `false` to correct the label. This is a collection-wide admin declaration; totals and payment statuses remain unchanged. |
 
-Closed/cancelled campaigns cannot be reopened or edited; expired campaigns also cannot be reopened through editing. Repeating an already stored closed/cancelled status returns 409. A resolution requires cancellation; the refunded flag requires closure/cancellation. Missing or invalid fields return 400. Ordinary members receive 403 on every management endpoint.
+Closed/cancelled special deposits cannot be reopened or edited; expired special deposits also cannot be reopened through editing. Repeating an already stored closed/cancelled status returns 409. A resolution requires cancellation; the refunded flag requires closure/cancellation. Missing or invalid fields return 400. Ordinary members receive 403 on every management endpoint.
 
 Show a **Refunded** label when `is_refunded` is true. This setting records what the admin reports; it does not verify a bank refund. Do not show refund forms for amount, date, transfer reference, or Paystack processing.
 
-### Browse campaigns and show progress
+### Browse special deposits and show progress
 
 `GET /api/v1/campaigns` returns the usual `{data: {items: [], next_cursor: ...}}` list. Filters: `status=UPCOMING|OPEN|CLOSED|CANCELLED`, `participation=VOLUNTARY|REQUIRED`. Use `limit`, `cursor`, and optional `sort=created_at:asc|created_at:desc`; default order is newest first. Query status/participation values are case-insensitive. Send the returned `next_cursor` as `cursor` for the next page.
 
-`GET /api/v1/campaigns/{id}` returns one campaign. Both endpoints allow admins/owners and active members; pending members receive 403. Each campaign includes:
+`GET /api/v1/campaigns/{id}` returns one special deposit. Both endpoints allow admins/owners and active members; pending members receive 403. Each special deposit includes:
 
 - `id`, `name`, `description`, `participation`, `amount_type`, optional fixed `amount`, `starts_at`, `ends_at`, and `created_at`.
 - `status`: `UPCOMING` before the start, `OPEN` from the start up to the end, `CLOSED` after the end or an admin closes collection, and `CANCELLED` after admin cancellation.
@@ -684,9 +711,9 @@ Show a **Refunded** label when `is_refunded` is true. This setting records what 
 - `contribution_count` and `contributing_members`: successful payments and distinct contributors. Pending/failed checkouts contribute zero.
 - `my_contribution`: the member's own verified total, included on the detail response for ordinary members. Admin views show cooperative totals and history.
 
-### Pay into a campaign
+### Pay into a special deposit
 
-For a fixed campaign, request a quote with `GET /api/v1/payments/quote?purpose=SPECIAL_DEPOSIT&campaign_id={id}`. For a flexible campaign, also send `amount`, at least 50000. The quote includes `campaign_id` and the normal fee breakdown.
+For a fixed special deposit, request a quote with `GET /api/v1/payments/quote?purpose=SPECIAL_DEPOSIT&campaign_id={id}`. For a flexible special deposit, also send `amount`, at least 50000. The quote includes `campaign_id` and the normal fee breakdown.
 
 Start checkout with `POST /api/v1/payments`:
 
@@ -694,15 +721,15 @@ Start checkout with `POST /api/v1/payments`:
 {"purpose":"SPECIAL_DEPOSIT","campaign_id":"<campaign UUID>"}
 ```
 
-For flexible campaigns add `"amount":75000`. Fixed campaigns use their current amount; an explicitly supplied amount must match it. Send the amount shown in the quote when starting checkout so a campaign price change is rejected with 400 and the member can review a new quote. **Repeated contributions are allowed for both modes.** Each fixed contribution is the full fixed amount. Each checkout has its own reference. Avoid creating a new checkout merely because the page reloads.
+For flexible special deposits add `"amount":75000`. Fixed special deposits use their current amount; an explicitly supplied amount must match it. Send the amount shown in the quote when starting checkout so a special deposit price change is rejected with 400 and the member can review a new quote. **Repeated contributions are allowed for both modes.** Each fixed contribution is the full fixed amount. Each checkout has its own reference. Avoid creating a new checkout merely because the page reloads.
 
-The payment response and Paystack metadata include `campaign_id`; the default description is the campaign name. Show the usual checkout, processing, and success flow from Step 4. Signed webhooks apply each payment once. New quotes/checkouts are rejected with 409 outside the campaign dates or after closing/cancellation. A checkout started while open can still settle after closure/cancellation; its original amount and verified funds remain recorded.
+The payment response and Paystack metadata include `campaign_id`; the default description is the special deposit name. Show the usual checkout, processing, and success flow from Step 4. Signed webhooks apply each payment once. New quotes/checkouts are rejected with 409 outside the special deposit dates or after closing/cancellation. A checkout started while open can still settle after closure/cancellation; its original amount and verified funds remain recorded.
 
 `GET /api/v1/campaigns/{id}/contributions` returns successful payment records, paginated with `limit`/`cursor` and the same sort options. Admins see all contributions with member details. Ordinary members see only their own payments; a supplied `member_id` cannot change that scope. For pending/failed checkouts, admins use `GET /api/v1/payments?campaign_id={id}` and the existing **Check with Paystack** fallback.
 
-Errors: 400 for invalid campaign fields, dates, UUIDs, list options, amount, or missing campaign ID; 401 without login; 403 without admin creation access or active-member read/payment access; 404 for an unknown campaign; 409 when the campaign is not open. Checkout configuration/provider errors follow Step 4.
+Errors: 400 for invalid special deposit fields, dates, UUIDs, list options, amount, or missing special deposit ID; 401 without login; 403 without admin creation access or active-member read/payment access; 404 for an unknown special deposit; 409 when the special deposit is not open. Checkout configuration/provider errors follow Step 4.
 
-Apply `00012_campaigns.sql`, `00013_campaign_management.sql`, and `00014_campaign_refunded_flag.sql` before using this step. They add campaigns, lifecycle/refunded settings, and a nullable campaign association on payments, preserving historical special deposits without inventing campaign assignments. The existing manual deposit/approval routes remain available as requested; they do not assign money to named campaigns.
+Apply `00012_campaigns.sql`, `00013_campaign_management.sql`, and `00014_campaign_refunded_flag.sql` before using this step. They add special deposits, lifecycle/refunded settings, and a nullable special deposit association on payments, preserving historical special deposits without inventing special deposit assignments. The existing manual deposit/approval routes remain available as requested; they do not assign money to named special deposits.
 
 ## Share Price Configuration
 
@@ -873,9 +900,11 @@ Build locally with `docker build -f deploy.dockerfile -t ara-cooperative:deploy 
 
 ## Validation
 
+- Existing-member onboarding passes the full PostgreSQL integration suite with race detection. Tests cover admin/owner invitations, classification preserved on retries, session and list responses, fee quote/checkout rejection, application/declaration requirements, activation without payment or photo, repeated profile saves, and rejection of member-controlled classification changes. Migration `00019` adds the flag with a `false` default; sqlc models were regenerated.
+
 - Loans and Redis removal passed the full PostgreSQL suite with race detection and static checks on 8 November 2026. Tests cover loan application ownership, active-member restrictions, owner/admin review, self-approval rejection, savings/share thresholds, pending-payment exclusion, saved override snapshots, both interest methods/periods, rejection, history filters/paging, external disbursement dates/amounts, concurrent disbursement once, duplicate-reference rollback, configured share prices, and preservation of older share quotes. Migration 15 is applied locally; API health, owner login, loan list, and settings returned 200 without Redis. The deployment Dockerfile passed Docker's build checks; its entrypoint and migration directory were verified.
-- Campaign management passed the full PostgreSQL suite with race detection and static checks on 8 November 2026. Tests cover owner/admin permissions, member-visible cancellation/refunded labels, field/date validation, closure and cancellation transitions, resolution notes, true/false refunded flags, expired-campaign restrictions, fixed/flexible editing, original checkout preservation, new checkout repricing, and late webhook crediting once.
-- Campaigns passed the full PostgreSQL suite with race detection and static checks on 8 November 2026. Tests cover owner/admin creation, pending-member restrictions, fixed/flexible repeat contributions, quote and metadata association, date/amount validation, pending-payment exclusion, principal-only totals, concurrent webhook delivery once, pagination, filters, member privacy, and settlement after campaign closure. Migration 12 is applied locally; live owner login/list returned 200 and invalid campaign input returned 400.
+- Special deposit management passed the full PostgreSQL suite with race detection and static checks on 8 November 2026. Tests cover owner/admin permissions, member-visible cancellation/refunded labels, field/date validation, closure and cancellation transitions, resolution notes, true/false refunded flags, restrictions on expired special deposits, fixed/flexible editing, original checkout preservation, new checkout repricing, and late webhook crediting once.
+- Special deposits passed the full PostgreSQL suite with race detection and static checks on 8 November 2026. Tests cover owner/admin creation, pending-member restrictions, fixed/flexible repeat contributions, quote and metadata association, date/amount validation, pending-payment exclusion, principal-only totals, concurrent webhook delivery once, pagination, filters, member privacy, and settlement after special deposit closure. Migration 12 is applied locally; live owner login/list returned 200 and invalid special deposit input returned 400.
 - Required owner settlement configuration passed the full PostgreSQL suite with race detection and static checks on 8 November 2026. Tests cover missing/blank subaccounts, 0% maintenance, available quotes, 503 without payment creation or provider initialization, and webhook crediting of an existing checkout after configuration is removed.
 - Membership checkout requires all four profile details (8 November 2026). The full PostgreSQL suite passed with race detection and `go vet -tags=integration ./...` passed. Tests cover each missing or blank field, available quotes before completion, no payment record or provider checkout on rejection, and successful profile-save → checkout → signed-webhook activation.
 - Cooperative-main/owner-subaccount routing passed the full PostgreSQL test suite with race detection and static checks on 8 November 2026. Tests cover the owner fee-bearer payload, persisted split allocation, preservation of the cooperative principal, and a zero-maintenance checkout. Existing checkouts retain their stored split.

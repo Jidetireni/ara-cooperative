@@ -30,9 +30,15 @@ const (
 )
 
 type CreateMemberInput struct {
-	Email     string `json:"email" validate:"required,email,max=255"`
-	FirstName string `json:"first_name" validate:"required,max=255"`
-	LastName  string `json:"last_name" validate:"max=255"`
+	Email            string `json:"email" validate:"required,email,max=255"`
+	FirstName        string `json:"first_name" validate:"required,max=255"`
+	LastName         string `json:"last_name" validate:"max=255"`
+	IsExistingMember bool   `json:"is_existing_member"`
+}
+
+// UpdateExistingMemberInput is admin-only and requires an explicit boolean.
+type UpdateExistingMemberInput struct {
+	IsExistingMember *bool `json:"is_existing_member" validate:"required"`
 }
 
 // UpdateMemberProfileInput mirrors the paper membership application form.
@@ -128,15 +134,16 @@ type MemberInvitation struct {
 }
 
 type Member struct {
-	ID             uuid.UUID `json:"id"`
-	FirstName      string    `json:"first_name"`
-	LastName       string    `json:"last_name"`
-	Slug           string    `json:"slug"`
-	Phone          string    `json:"phone"`
-	Address        string    `json:"address"`
-	NextOfKinName  string    `json:"next_of_kin_name"`
-	NextOfKinPhone string    `json:"next_of_kin_phone"`
-	IsActive       bool      `json:"is_active"`
+	ID               uuid.UUID `json:"id"`
+	FirstName        string    `json:"first_name"`
+	LastName         string    `json:"last_name"`
+	Slug             string    `json:"slug"`
+	Phone            string    `json:"phone"`
+	Address          string    `json:"address"`
+	NextOfKinName    string    `json:"next_of_kin_name"`
+	NextOfKinPhone   string    `json:"next_of_kin_phone"`
+	IsActive         bool      `json:"is_active"`
+	IsExistingMember bool      `json:"is_existing_member"`
 
 	// Membership application form details. Omitted when empty, including on
 	// member summaries embedded in other records.

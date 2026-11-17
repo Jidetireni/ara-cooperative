@@ -529,6 +529,9 @@ func (p *Payment) plan(ctx context.Context, input dto.CreatePaymentInput) (*chec
 	plan := &checkoutPlan{member: member, purpose: repository.LedgerType(input.Purpose)}
 	switch plan.purpose {
 	case repository.LedgerTypeREGISTRATIONFEE:
+		if member.IsExistingMember {
+			return nil, &svc.APIError{Status: http.StatusConflict, Message: "existing members do not pay the membership fee"}
+		}
 		if member.ActivatedAt.Valid {
 			return nil, &svc.APIError{Status: http.StatusConflict, Message: "membership is already active"}
 		}

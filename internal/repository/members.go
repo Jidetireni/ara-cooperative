@@ -60,6 +60,7 @@ type PopulatedMember struct {
 }
 
 type populatedMemberFlat struct {
+	MbIsExistingMember      bool       `json:"mb_is_existing_member"`
 	MbID                    uuid.UUID  `json:"mb_id"`
 	MbUserID                uuid.UUID  `json:"mb_user_id"`
 	MbFirstName             string     `json:"mb_first_name"`
@@ -175,6 +176,7 @@ func (mq *MemberRepository) populatedSelectColumns() []string {
 	return []string{
 		// Member fields
 		"m.id AS mb_id",
+		"m.is_existing_member AS mb_is_existing_member",
 		"m.user_id AS mb_user_id",
 		"m.first_name AS mb_first_name",
 		"m.last_name AS mb_last_name",
@@ -282,6 +284,7 @@ func (mq *MemberRepository) ListPopulated(ctx context.Context, filter MemberRepo
 func (mq *MemberRepository) mapFlatToPopulated(flat *populatedMemberFlat) *PopulatedMember {
 	return &PopulatedMember{
 		Member: Member{
+			IsExistingMember:      flat.MbIsExistingMember,
 			ID:                    flat.MbID,
 			UserID:                flat.MbUserID,
 			FirstName:             flat.MbFirstName,
@@ -344,8 +347,8 @@ func (mq *MemberRepository) Exists(ctx context.Context, filter MemberRepositoryF
 
 func (mq *MemberRepository) Create(ctx context.Context, member *Member, tx *sqlx.Tx) (*Member, error) {
 	builder := mq.psql.Insert("members").
-		Columns("user_id", "slug", "first_name", "last_name", "phone", "address", "next_of_kin_name", "next_of_kin_phone").
-		Values(member.UserID, member.Slug, member.FirstName, member.LastName, member.Phone, member.Address, member.NextOfKinName, member.NextOfKinPhone).
+		Columns("user_id", "slug", "first_name", "last_name", "phone", "address", "next_of_kin_name", "next_of_kin_phone", "is_existing_member").
+		Values(member.UserID, member.Slug, member.FirstName, member.LastName, member.Phone, member.Address, member.NextOfKinName, member.NextOfKinPhone, member.IsExistingMember).
 		Suffix("RETURNING *")
 
 	query, args, err := builder.ToSql()
@@ -389,6 +392,7 @@ func (mq *MemberRepository) Update(ctx context.Context, member *Member, tx *sqlx
 		Set("introduced_by_name", member.IntroducedByName).
 		Set("introduced_by_number", member.IntroducedByNumber).
 		Set("declaration_accepted_at", member.DeclarationAcceptedAt).
+		Set("is_existing_member", member.IsExistingMember).
 		Set("activated_at", member.ActivatedAt).
 		Set("updated_at", time.Now()).
 		Where(sq.Eq{"id": member.ID}).
@@ -447,6 +451,7 @@ func (mq *MemberRepository) MapRepositoryToDTOModel(member *Member) *dto.Member 
 		isActive = true
 	}
 	result := &dto.Member{
+		IsExistingMember:   member.IsExistingMember,
 		ID:                 member.ID,
 		FirstName:          member.FirstName,
 		LastName:           member.LastName,
